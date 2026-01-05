@@ -39,36 +39,22 @@ jobs:
           NEXT_PUBLIC_APP_NAME: "Ghana Farmer"
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXTAUTH_URL }}
 
-      - name: Prepare deployment files
+      - name: Prepare standalone deployment
         run: |
-          mkdir -p deploy/.next
-          mkdir -p deploy/public
-          mkdir -p deploy/prisma
-          mkdir -p deploy/src
-          mkdir -p deploy/.prisma-client
+          # Copy standalone build (includes all dependencies bundled)
+          cp -r .next/standalone deploy
           
-          # Copy built Next.js app
-          cp -r .next/* deploy/.next/
+          # Copy static files
+          cp -r .next/static deploy/.next/static
           
           # Copy public assets
-          cp -r public/* deploy/public/
+          cp -r public deploy/public
           
-          # Copy Prisma schema
-          cp -r prisma/* deploy/prisma/
-          
-          # Copy Prisma client to separate folder (CloudLinux manages node_modules)
-          cp -r node_modules/.prisma/* deploy/.prisma-client/
-          cp -r node_modules/@prisma deploy/.prisma-client/
-          
-          # Copy source files needed for runtime
-          cp -r src deploy/
-          
-          # Copy config files
-          cp package.json deploy/
-          cp package-lock.json deploy/
-          cp server.js deploy/
-          cp next.config.ts deploy/
-          cp tsconfig.json deploy/
+          # Copy Prisma client (Linux binaries)
+          mkdir -p deploy/node_modules/.prisma
+          mkdir -p deploy/node_modules/@prisma
+          cp -r node_modules/.prisma/* deploy/node_modules/.prisma/
+          cp -r node_modules/@prisma/* deploy/node_modules/@prisma/
           
           # Create .env file for production
           echo "NODE_ENV=production" > deploy/.env
@@ -91,5 +77,4 @@ jobs:
           exclude: |
             **/.git*
             **/.git*/**
-            **/node_modules/**
             **/.next/cache/**

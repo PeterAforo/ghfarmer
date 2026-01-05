@@ -1,0 +1,3129 @@
+// Ghana Farmer - Database Schema
+// Based on PRD v1.0
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTHENTICATION & USER MANAGEMENT
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  phone         String?   @unique
+  password      String?
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  phoneVerified DateTime?
+  
+  // Role & Subscription
+  role          UserRole   @default(USER)
+  accountType   AccountType @default(FARMER)
+  subscription  SubscriptionTier @default(FREE)
+  subscriptionEndsAt DateTime?
+  
+  // Profile
+  farmerType    FarmerType @default(SMALLHOLDER)
+  language      Language   @default(ENGLISH)
+  region        String?
+  constituency  String?
+  district      String?
+  community     String?
+  
+  // Settings
+  currency      String     @default("GHS")
+  units         Units      @default(METRIC)
+  
+  // User-defined unit prices (JSON for flexibility)
+  unitPrices    Json?      // { eggs: 1.5, milk: 8, meatPerKg: 35, fishPerKg: 40, etc. }
+  
+  // Push Notifications
+  pushSubscription String?  @db.Text
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  farms         Farm[]
+  crops         CropEntry[]
+  livestock     LivestockEntry[]
+  expenses      Expense[]
+  incomes       Income[]
+  tasks         Task[]
+  notifications Notification[]
+  priceAlerts   PriceAlert[]
+  
+  // Community & Marketplace
+  forumPosts      ForumPost[]
+  forumComments   ForumComment[]
+  forumLikes      ForumLike[]
+  commentLikes    CommentLike[]
+  groupMemberships GroupMember[]
+  marketListings  MarketListing[]
+  listingInquiries ListingInquiry[]
+  supplierReviews SupplierReview[]
+  programApplications ProgramApplication[]
+  
+  // DSE Relations
+  farmEvents      FarmEvent[]
+  farmSnapshots   FarmSnapshot[]
+  farmFeatures    FarmFeature[]
+  recommendations Recommendation[]
+  recommendationFeedback RecommendationFeedback[]
+  
+  // Plot Relations
+  plots           Plot[]
+  
+  // Service Provider (for non-farmer accounts)
+  serviceProvider ServiceProvider?
+  
+  // Subscriptions & Billing
+  subscriptions   Subscription[]
+  teamMemberships TeamMember[] @relation("TeamMemberUser")
+  ownedTeamMembers TeamMember[] @relation("TeamOwner")
+  inventoryItems  InventoryItem[]
+  
+  // Support & Admin
+  supportTickets    SupportTicket[] @relation("UserTickets")
+  assignedTickets   SupportTicket[] @relation("AssignedTickets")
+  supportMessages   SupportMessage[]
+  auditLogs         AuditLog[]
+  announcements     Announcement[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ============================================
+// FARM MANAGEMENT
+// ============================================
+
+model Farm {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  size        Float?
+  sizeUnit    SizeUnit @default(HECTARES)
+  latitude    Float?
+  longitude   Float?
+  address     String?
+  region      String?
+  constituency String?
+  district    String?
+  image       String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  crops       CropEntry[]
+  livestock   LivestockEntry[]
+  ponds       PondEntry[]
+  plots       Plot[]
+  
+  // DSE Relations
+  farmEvents    FarmEvent[]
+  farmSnapshots FarmSnapshot[]
+  farmFeatures  FarmFeature[]
+  recommendations Recommendation[]
+
+  @@map("farms")
+}
+
+// ============================================
+// PLOT MANAGEMENT (Farm Space Planning)
+// ============================================
+
+model Plot {
+  id              String      @id @default(cuid())
+  userId          String
+  farmId          String
+  
+  // Plot identification
+  name            String      // e.g., "Plot A", "North Section"
+  description     String?
+  
+  // Size allocation
+  size            Float       // Size of this plot
+  sizeUnit        SizeUnit    @default(HECTARES)
+  
+  // Usage type
+  usageType       PlotUsageType
+  
+  // Location within farm
+  location        String?     // e.g., "North corner", "Near water source"
+  coordinates     Json?       // GPS boundaries if available
+  
+  // Soil info (for crop plots)
+  soilType        String?
+  soilPh          Float?
+  irrigationType  String?
+  
+  // Status
+  status          PlotStatus  @default(AVAILABLE)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farm            Farm        @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  pens            Pen[]       // For livestock plots
+  cropAllocations CropPlotAllocation[]
+  
+  @@index([farmId])
+  @@index([usageType])
+  @@map("plots")
+}
+
+// Pen/Housing for livestock within a plot
+model Pen {
+  id              String      @id @default(cuid())
+  plotId          String
+  
+  // Pen identification
+  name            String      // e.g., "Pen 1", "Coop A"
+  penType         String      // e.g., "Open", "Enclosed", "Free Range"
+  
+  // Size
+  length          Float?      // in meters
+  width           Float?      // in meters
+  area            Float?      // calculated or manual entry (sq meters)
+  
+  // Capacity
+  animalType      String?     // Type of animal this pen is for
+  calculatedCapacity Int?     // System calculated based on animal type
+  actualCapacity  Int?        // User override
+  currentOccupancy Int        @default(0)
+  
+  // Features
+  hasRoof         Boolean     @default(true)
+  hasFeeder       Boolean     @default(false)
+  hasWaterer      Boolean     @default(false)
+  ventilationType String?
+  floorType       String?     // e.g., "Concrete", "Earth", "Slatted"
+  
+  // Status
+  status          PenStatus   @default(AVAILABLE)
+  
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  plot            Plot        @relation(fields: [plotId], references: [id], onDelete: Cascade)
+  livestockEntries LivestockEntry[]
+  
+  @@index([plotId])
+  @@map("pens")
+}
+
+// Crop allocation within a plot
+model CropPlotAllocation {
+  id              String      @id @default(cuid())
+  plotId          String
+  cropEntryId     String?     // Link to actual crop entry if planted
+  
+  // Allocation details
+  cropType        String      // Type of crop planned
+  allocatedArea   Float       // Area allocated for this crop
+  areaUnit        SizeUnit    @default(HECTARES)
+  
+  // Capacity calculation
+  plantSpacing    Float?      // Spacing between plants (meters)
+  rowSpacing      Float?      // Spacing between rows (meters)
+  calculatedCapacity Int?     // Number of plants that can fit
+  
+  // Planting info
+  plannedPlantingDate DateTime?
+  actualPlantingDate  DateTime?
+  expectedHarvestDate DateTime? // Auto-calculated based on crop type
+  daysToMaturity      Int?      // Days from planting to harvest
+  
+  // Seed/Planting material info
+  plantingMaterial    String?   // seeds, seedlings, stumps, suckers, etc.
+  seedQuantity        Float?    // Number of seeds/seedlings/etc to plant
+  seedUnit            String?   // kg, pieces, bundles, etc.
+  seedCostPerUnit     Float?    // Cost per unit of planting material
+  totalSeedCost       Float?    // Total cost of seeds/planting material
+  
+  // Status
+  status          AllocationStatus @default(PLANNED)
+  
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  plot            Plot        @relation(fields: [plotId], references: [id], onDelete: Cascade)
+  cropEntry       CropEntry?  @relation(fields: [cropEntryId], references: [id])
+  
+  @@index([plotId])
+  @@map("crop_plot_allocations")
+}
+
+enum PlotUsageType {
+  CROP
+  LIVESTOCK
+  AQUACULTURE
+  MIXED
+  FALLOW
+  STORAGE
+  RESIDENTIAL
+}
+
+enum PlotStatus {
+  AVAILABLE
+  IN_USE
+  FALLOW
+  UNDER_PREPARATION
+}
+
+enum PenStatus {
+  AVAILABLE
+  OCCUPIED
+  UNDER_MAINTENANCE
+  CLOSED
+}
+
+enum AllocationStatus {
+  PLANNED
+  PLANTED
+  GROWING
+  HARVESTED
+  CANCELLED
+}
+
+// ============================================
+// CROP MANAGEMENT
+// ============================================
+
+model Crop {
+  id              String   @id @default(cuid())
+  englishName     String
+  scientificName  String?
+  category        CropCategory
+  localNames      Json?    // { twi: "", ga: "", ewe: "", hausa: "", dagbani: "" }
+  
+  // Crop cycle info
+  cropCycle       Json?    // { landPrepDays, plantingToGermination, etc. }
+  plantingInfo    Json?    // { bestSeasons, seedRate, spacing, depth }
+  soilRequirements Json?
+  waterRequirements Json?
+  fertilizerSchedule Json?
+  harvestIndicators Json?
+  postHarvest     Json?
+  marketInfo      Json?
+  yieldBenchmark  Json?
+  
+  // Media
+  images          Json?
+  videos          Json?
+  
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  varieties       CropVariety[]
+  diseases        CropDisease[]
+  pests           CropPest[]
+  entries         CropEntry[]
+  agronomySchedules AgronomySchedule[]
+
+  @@map("crops")
+}
+
+model CropVariety {
+  id              String   @id @default(cuid())
+  cropId          String
+  name            String
+  type            String?  // Improved, Local, Hybrid
+  maturityDays    Int?
+  characteristics String?
+  suitability     String?
+  
+  crop            Crop     @relation(fields: [cropId], references: [id], onDelete: Cascade)
+  entries         CropEntry[]
+
+  @@map("crop_varieties")
+}
+
+model CropDisease {
+  id          String   @id @default(cuid())
+  cropId      String
+  name        String
+  localNames  Json?
+  type        String?  // Viral, Bacterial, Fungal
+  symptoms    Json?    // Array of symptoms
+  causes      String?
+  prevention  Json?    // Array of prevention methods
+  treatment   Json?    // Array of treatments
+  photos      Json?    // Array of photo URLs
+  
+  crop        Crop     @relation(fields: [cropId], references: [id], onDelete: Cascade)
+
+  @@map("crop_diseases")
+}
+
+model CropPest {
+  id              String   @id @default(cuid())
+  cropId          String
+  name            String
+  localNames      Json?
+  identification  String?
+  damage          String?
+  control         Json?    // Array of control methods
+  photos          Json?
+  
+  crop            Crop     @relation(fields: [cropId], references: [id], onDelete: Cascade)
+
+  @@map("crop_pests")
+}
+
+model CropEntry {
+  id              String      @id @default(cuid())
+  userId          String
+  farmId          String
+  cropId          String
+  varietyId       String?
+  
+  plotName        String?
+  landArea        Float?
+  landAreaUnit    SizeUnit    @default(HECTARES)
+  plantingDate    DateTime?
+  expectedHarvestDate DateTime?
+  actualHarvestDate DateTime?
+  status          CropStatus  @default(PLANNED)
+  
+  // Seed/Planting Material
+  seedQuantity    Float?
+  seedUnit        String?
+  seedCostPerUnit Float?
+  totalSeedCost   Float?
+  calculatedCapacity Int?
+  
+  // Expected Yield (auto-calculated based on crop type and land area)
+  expectedYield       Float?
+  expectedYieldUnit   String?
+  expectedRevenue     Float?
+  expectedPricePerUnit Float?
+  
+  // Actual Yield (user-entered)
+  yieldQuantity   Float?
+  yieldUnit       String?
+  qualityGrade    String?
+  actualRevenue   Float?
+  actualPricePerUnit Float?
+  
+  // Variance tracking
+  yieldVariance       Float?      // Percentage difference from expected
+  varianceReason      String?     // User explanation
+  
+  // Setbacks
+  setbackType         String?     // PEST, DISEASE, WEATHER, THEFT, etc.
+  setbackSeverity     String?     // LOW, MEDIUM, HIGH, TOTAL_LOSS
+  affectedArea        Float?      // Area affected by setback
+  estimatedLoss       Float?      // Estimated yield loss
+  setbackNotes        String?
+  
+  notes           String?
+  images          Json?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farm            Farm        @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  crop            Crop        @relation(fields: [cropId], references: [id])
+  variety         CropVariety? @relation(fields: [varietyId], references: [id])
+  activities      CropActivity[]
+  expenses        Expense[]
+  incomes         Income[]
+  plotAllocations CropPlotAllocation[]
+
+  @@map("crop_entries")
+}
+
+model CropActivity {
+  id              String          @id @default(cuid())
+  cropEntryId     String
+  type            CropActivityType
+  date            DateTime
+  
+  // Activity-specific data stored as JSON
+  details         Json?
+  cost            Float?
+  notes           String?
+  images          Json?
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  cropEntry       CropEntry       @relation(fields: [cropEntryId], references: [id], onDelete: Cascade)
+
+  @@map("crop_activities")
+}
+
+// ============================================
+// LIVESTOCK MANAGEMENT
+// ============================================
+
+model Livestock {
+  id                  String   @id @default(cuid())
+  englishName         String
+  scientificName      String?
+  category            LivestockCategory
+  subCategory         String?
+  localNames          Json?
+  
+  // Management info
+  housingRequirements Json?
+  feedingGuidelines   Json?
+  productionCycles    Json?
+  healthMonitoring    Json?
+  breedingManagement  Json?
+  productionMetrics   Json?
+  marketInfo          Json?
+  financialEstimates  Json?
+  bestPractices       Json?
+  
+  // Media
+  images              Json?
+  videos              Json?
+  
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  breeds              LivestockBreed[]
+  diseases            LivestockDisease[]
+  vaccinations        VaccinationSchedule[]
+  entries             LivestockEntry[]
+  healthSchedules     LivestockHealthSchedule[]
+
+  @@map("livestock")
+}
+
+model LivestockBreed {
+  id              String   @id @default(cuid())
+  livestockId     String
+  name            String
+  characteristics Json?
+  suitability     String?
+  
+  livestock       Livestock @relation(fields: [livestockId], references: [id], onDelete: Cascade)
+  entries         LivestockEntry[]
+
+  @@map("livestock_breeds")
+}
+
+model LivestockDisease {
+  id          String   @id @default(cuid())
+  livestockId String
+  name        String
+  localNames  Json?
+  type        String?  // Viral, Bacterial, Parasitic
+  symptoms    Json?
+  transmission String?
+  prevention  Json?
+  treatment   Json?
+  photos      Json?
+  
+  livestock   Livestock @relation(fields: [livestockId], references: [id], onDelete: Cascade)
+
+  @@map("livestock_diseases")
+}
+
+model VaccinationSchedule {
+  id                  String   @id @default(cuid())
+  livestockId         String
+  vaccineName         String
+  localName           String?
+  diseasePrevented    String?
+  firstDoseAgeWeeks   Int?
+  boosterRequired     Boolean  @default(false)
+  boosterFrequency    String?
+  administrationRoute String?
+  dosage              String?
+  costRange           String?
+  
+  livestock           Livestock @relation(fields: [livestockId], references: [id], onDelete: Cascade)
+
+  @@map("vaccination_schedules")
+}
+
+model LivestockEntry {
+  id              String          @id @default(cuid())
+  userId          String
+  farmId          String
+  livestockId     String
+  breedId         String?
+  
+  // Identification
+  tagNumber       String?
+  name            String?
+  batchId         String?         // For batch entries (poultry)
+  quantity        Int             @default(1)
+  
+  // Details
+  gender          Gender?
+  birthDate       DateTime?
+  acquiredDate    DateTime?
+  source          AnimalSource?
+  costPerAnimal   Float?          // Cost per animal if purchased
+  expectedSellingPrice Float?     // Expected selling price per unit (for revenue calculations)
+  status          AnimalStatus    @default(ACTIVE)
+  location        String?         // Pen/paddock/cage
+  
+  // For deceased/sold
+  exitDate        DateTime?
+  exitReason      String?
+  
+  notes           String?
+  images          Json?
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  penId           String?
+  
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farm            Farm            @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  livestock       Livestock       @relation(fields: [livestockId], references: [id])
+  breed           LivestockBreed? @relation(fields: [breedId], references: [id])
+  pen             Pen?            @relation(fields: [penId], references: [id])
+  
+  healthRecords   HealthRecord[]
+  breedingRecords BreedingRecord[]
+  productionRecords ProductionRecord[]
+  feedingRecords  FeedingRecord[]
+  expenses        Expense[]
+  incomes         Income[]
+
+  @@map("livestock_entries")
+}
+
+model HealthRecord {
+  id              String          @id @default(cuid())
+  livestockEntryId String
+  type            HealthRecordType
+  status          HealthRecordStatus @default(PENDING)
+  date            DateTime
+  completedDate   DateTime?
+  
+  // Vaccination specific
+  vaccineName     String?
+  nextDueDate     DateTime?
+  
+  // Disease/Treatment specific
+  diagnosis       String?
+  symptoms        Json?
+  treatment       String?
+  medication      String?
+  dosage          String?
+  veterinarian    String?
+  
+  cost            Float?
+  notes           String?
+  
+  // Auto-generated flag
+  isAutoGenerated Boolean         @default(false)
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  livestockEntry  LivestockEntry  @relation(fields: [livestockEntryId], references: [id], onDelete: Cascade)
+
+  @@map("health_records")
+}
+
+model BreedingRecord {
+  id              String          @id @default(cuid())
+  livestockEntryId String
+  breedingDate    DateTime
+  sireId          String?
+  damId           String?
+  
+  // Pregnancy/Incubation
+  expectedDueDate DateTime?
+  actualBirthDate DateTime?
+  offspringCount  Int?
+  weaningDate     DateTime?
+  
+  notes           String?
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  livestockEntry  LivestockEntry  @relation(fields: [livestockEntryId], references: [id], onDelete: Cascade)
+
+  @@map("breeding_records")
+}
+
+model ProductionRecord {
+  id              String          @id @default(cuid())
+  livestockEntryId String
+  date            DateTime
+  type            ProductionType
+  status          ProductionRecordStatus @default(EXPECTED)
+  
+  // Expected values (auto-generated)
+  expectedEggCount    Int?
+  expectedMilkVolume  Float?
+  expectedWeight      Float?
+  expectedRevenue     Float?
+  
+  // Actual values (user-entered)
+  actualEggCount      Int?
+  actualMilkVolume    Float?
+  actualWeight        Float?
+  actualRevenue       Float?
+  
+  // Legacy fields (for backward compatibility)
+  eggCount        Int?
+  eggGrade        String?
+  milkVolume      Float?
+  milkUnit        String?
+  weight          Float?
+  weightUnit      String?
+  
+  // Variance tracking
+  variance        Float?          // Percentage difference from expected
+  varianceReason  String?         // User explanation for variance
+  
+  // Setbacks
+  mortalityCount  Int?            // Number of animals lost
+  setbackType     String?         // MORTALITY, LOW_PRODUCTION, DISEASE, WEATHER, etc.
+  setbackNotes    String?
+  
+  // Pricing (user can override)
+  unitPrice       Float?          // Price per unit used for this record
+  
+  notes           String?
+  isAutoGenerated Boolean         @default(false)
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  livestockEntry  LivestockEntry  @relation(fields: [livestockEntryId], references: [id], onDelete: Cascade)
+
+  @@map("production_records")
+}
+
+model FeedingRecord {
+  id              String          @id @default(cuid())
+  livestockEntryId String
+  date            DateTime
+  feedType        String
+  quantity        Float
+  quantityUnit    String
+  cost            Float?
+  
+  createdAt       DateTime        @default(now())
+
+  livestockEntry  LivestockEntry  @relation(fields: [livestockEntryId], references: [id], onDelete: Cascade)
+
+  @@map("feeding_records")
+}
+
+// ============================================
+// AQUACULTURE MANAGEMENT
+// ============================================
+
+model PondEntry {
+  id              String      @id @default(cuid())
+  farmId          String
+  name            String
+  size            Float?
+  sizeUnit        String?     // m², m³
+  fishSpecies     String?
+  stockingDate    DateTime?
+  stockingCount   Int?        // Initial number of fish stocked
+  stockingDensity Float?
+  status          PondStatus  @default(ACTIVE)
+  
+  // Expected Production (auto-calculated)
+  expectedHarvestDate     DateTime?
+  expectedHarvestWeight   Float?      // Total expected kg
+  expectedSurvivalRate    Float?      // Expected % survival (e.g., 85%)
+  expectedFishCount       Int?        // Expected fish at harvest
+  expectedAvgWeight       Float?      // Expected average weight per fish (kg)
+  expectedRevenue         Float?
+  expectedPricePerKg      Float?
+  
+  // Actual Production (user-entered after harvest)
+  actualSurvivalRate      Float?
+  actualFishCount         Int?
+  actualTotalWeight       Float?
+  actualAvgWeight         Float?
+  actualRevenue           Float?
+  actualPricePerKg        Float?
+  
+  // Variance tracking
+  harvestVariance         Float?      // Percentage difference from expected
+  varianceReason          String?
+  
+  // Setbacks/Mortality
+  mortalityCount          Int?        // Total fish lost
+  mortalityPercentage     Float?
+  setbackType             String?     // DISEASE, WATER_QUALITY, PREDATOR, THEFT, WEATHER
+  setbackNotes            String?
+  
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  farm            Farm        @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  waterQuality    WaterQualityRecord[]
+  harvests        PondHarvest[]
+
+  @@map("pond_entries")
+}
+
+model WaterQualityRecord {
+  id              String      @id @default(cuid())
+  pondEntryId     String
+  date            DateTime
+  ph              Float?
+  temperature     Float?
+  dissolvedOxygen Float?
+  ammonia         Float?
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+
+  pondEntry       PondEntry   @relation(fields: [pondEntryId], references: [id], onDelete: Cascade)
+
+  @@map("water_quality_records")
+}
+
+model PondHarvest {
+  id              String      @id @default(cuid())
+  pondEntryId     String
+  date            DateTime
+  quantity        Float
+  quantityUnit    String
+  averageWeight   Float?
+  totalWeight     Float?
+  isPartial       Boolean     @default(false)
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+
+  pondEntry       PondEntry   @relation(fields: [pondEntryId], references: [id], onDelete: Cascade)
+
+  @@map("pond_harvests")
+}
+
+// ============================================
+// FINANCIAL MANAGEMENT
+// ============================================
+
+model Expense {
+  id              String          @id @default(cuid())
+  userId          String
+  cropEntryId     String?
+  livestockEntryId String?
+  
+  category        ExpenseCategory
+  amount          Float
+  currency        String          @default("GHS")
+  date            DateTime
+  description     String?
+  paymentMethod   PaymentMethod?
+  receiptImage    String?
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cropEntry       CropEntry?      @relation(fields: [cropEntryId], references: [id])
+  livestockEntry  LivestockEntry? @relation(fields: [livestockEntryId], references: [id])
+
+  @@map("expenses")
+}
+
+model Income {
+  id              String          @id @default(cuid())
+  userId          String
+  cropEntryId     String?
+  livestockEntryId String?
+  
+  productType     String
+  quantity        Float?
+  quantityUnit    String?
+  pricePerUnit    Float?
+  totalAmount     Float
+  currency        String          @default("GHS")
+  date            DateTime
+  buyerName       String?
+  buyerContact    String?
+  paymentMethod   PaymentMethod?
+  notes           String?
+  
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cropEntry       CropEntry?      @relation(fields: [cropEntryId], references: [id])
+  livestockEntry  LivestockEntry? @relation(fields: [livestockEntryId], references: [id])
+
+  @@map("incomes")
+}
+
+// ============================================
+// TASK MANAGEMENT
+// ============================================
+
+model Task {
+  id              String      @id @default(cuid())
+  userId          String
+  title           String
+  description     String?
+  dueDate         DateTime
+  category        TaskCategory
+  priority        TaskPriority @default(MEDIUM)
+  status          TaskStatus   @default(PENDING)
+  
+  // Link to related entity
+  relatedType     String?     // crop, livestock, pond
+  relatedId       String?
+  
+  // Auto-generated task info
+  isAutoGenerated Boolean     @default(false)
+  sourceType      String?     // vaccination, fertilizer, harvest, etc.
+  
+  completedAt     DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("tasks")
+}
+
+// ============================================
+// MARKET INTELLIGENCE
+// ============================================
+
+model Market {
+  id              String      @id @default(cuid())
+  name            String
+  region          String
+  type            String?     // Wholesale, Retail, Both
+  marketDays      Json?       // Array of days
+  specialties     Json?       // Array of product types
+  latitude        Float?
+  longitude       Float?
+  contact         String?
+  openingHours    String?
+  
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  prices          MarketPrice[]
+
+  @@map("markets")
+}
+
+model MarketPrice {
+  id              String      @id @default(cuid())
+  marketId        String
+  productType     String      // crop or livestock name
+  productCategory String?
+  price           Float
+  currency        String      @default("GHS")
+  unit            String      // per kg, per bag, per animal
+  date            DateTime
+  
+  createdAt       DateTime    @default(now())
+
+  market          Market      @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  @@index([marketId, productType, date])
+  @@map("market_prices")
+}
+
+model PriceAlert {
+  id              String      @id @default(cuid())
+  userId          String
+  productType     String
+  targetPrice     Float
+  condition       PriceCondition // ABOVE, BELOW
+  isActive        Boolean     @default(true)
+  triggeredAt     DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("price_alerts")
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id              String              @id @default(cuid())
+  userId          String
+  type            NotificationType
+  title           String
+  message         String
+  data            Json?
+  isRead          Boolean             @default(false)
+  readAt          DateTime?
+  
+  createdAt       DateTime            @default(now())
+
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ============================================
+// REFERENCE DATA
+// ============================================
+
+model Region {
+  id              String      @id @default(cuid())
+  name            String      @unique
+  capital         String?
+  
+  districts       District[]
+
+  @@map("regions")
+}
+
+model District {
+  id              String      @id @default(cuid())
+  regionId        String
+  name            String
+  capital         String?
+  
+  region          Region      @relation(fields: [regionId], references: [id], onDelete: Cascade)
+
+  @@unique([regionId, name])
+  @@map("districts")
+}
+
+model Fertilizer {
+  id              String      @id @default(cuid())
+  name            String
+  type            String      // Compound, Straight, Organic
+  composition     Json?       // { nitrogen, phosphorus, potassium }
+  applicableCrops Json?
+  applicationRate String?
+  applicationTiming Json?
+  costPerBag      Float?
+  commonBrands    Json?
+  
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("fertilizers")
+}
+
+model Medication {
+  id                  String      @id @default(cuid())
+  name                String
+  type                String      // Antibiotic, Dewormer, Vaccine, etc.
+  form                String?     // Injectable, Oral, Topical
+  indications         Json?
+  applicableAnimals   Json?
+  dosage              String?
+  administrationRoute String?
+  withdrawalPeriod    Int?        // days
+  storage             String?
+  costRange           String?
+  commonBrands        Json?
+  
+  isActive            Boolean     @default(true)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  @@map("medications")
+}
+
+model Feed {
+  id              String      @id @default(cuid())
+  name            String
+  type            String      // Complete feed, Concentrate, etc.
+  applicableAnimals Json?
+  composition     Json?       // { protein, energy, calcium, etc. }
+  recommendedUsage String?
+  feedingRate     String?
+  storage         String?
+  shelfLifeMonths Int?
+  costPerBag      Float?
+  commonBrands    Json?
+  
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("feeds")
+}
+
+model Pesticide {
+  id              String      @id @default(cuid())
+  name            String
+  type            String      // Insecticide, Fungicide, Herbicide
+  tradeNames      Json?
+  targetPests     Json?
+  applicableCrops Json?
+  applicationRate String?
+  applicationMethod String?
+  preHarvestInterval Int?     // days
+  precautions     Json?
+  costRange       String?
+  
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("pesticides")
+}
+
+// ============================================
+// COMMUNITY & FORUM
+// ============================================
+
+model ForumPost {
+  id          String      @id @default(cuid())
+  userId      String
+  title       String
+  content     String
+  category    ForumCategory
+  tags        Json?
+  views       Int         @default(0)
+  isPinned    Boolean     @default(false)
+  isClosed    Boolean     @default(false)
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments    ForumComment[]
+  likes       ForumLike[]
+
+  @@map("forum_posts")
+}
+
+model ForumComment {
+  id          String      @id @default(cuid())
+  postId      String
+  userId      String
+  content     String
+  parentId    String?
+  isAnswer    Boolean     @default(false)
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  post        ForumPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent      ForumComment? @relation("CommentReplies", fields: [parentId], references: [id])
+  replies     ForumComment[] @relation("CommentReplies")
+  likes       CommentLike[]
+
+  @@map("forum_comments")
+}
+
+model ForumLike {
+  id          String      @id @default(cuid())
+  postId      String
+  userId      String
+  createdAt   DateTime    @default(now())
+
+  post        ForumPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("forum_likes")
+}
+
+model CommentLike {
+  id          String      @id @default(cuid())
+  commentId   String
+  userId      String
+  createdAt   DateTime    @default(now())
+
+  comment     ForumComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+  @@map("comment_likes")
+}
+
+model FarmerGroup {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  type        GroupType   @default(COOPERATIVE)
+  region      String?
+  district    String?
+  isPublic    Boolean     @default(true)
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  members     GroupMember[]
+
+  @@map("farmer_groups")
+}
+
+model GroupMember {
+  id          String      @id @default(cuid())
+  groupId     String
+  userId      String
+  role        GroupRole   @default(MEMBER)
+  joinedAt    DateTime    @default(now())
+
+  group       FarmerGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
+// ============================================
+// MARKETPLACE
+// ============================================
+
+model MarketListing {
+  id              String      @id @default(cuid())
+  userId          String
+  title           String
+  description     String?
+  category        ListingCategory
+  productType     String
+  quantity        Float
+  quantityUnit    String
+  pricePerUnit    Float
+  currency        String      @default("GHS")
+  location        String?
+  region          String?
+  availableFrom   DateTime?
+  availableUntil  DateTime?
+  images          Json?
+  status          ListingStatus @default(ACTIVE)
+  views           Int         @default(0)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inquiries       ListingInquiry[]
+
+  @@map("market_listings")
+}
+
+model ListingInquiry {
+  id          String      @id @default(cuid())
+  listingId   String
+  userId      String
+  message     String
+  phone       String?
+  status      InquiryStatus @default(PENDING)
+  
+  createdAt   DateTime    @default(now())
+
+  listing     MarketListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("listing_inquiries")
+}
+
+// ============================================
+// INPUT SUPPLIERS
+// ============================================
+
+model InputSupplier {
+  id              String      @id @default(cuid())
+  name            String
+  type            SupplierType
+  description     String?
+  address         String?
+  region          String?
+  district        String?
+  phone           String?
+  email           String?
+  website         String?
+  products        Json?
+  services        Json?
+  paymentMethods  Json?
+  deliveryAreas   Json?
+  rating          Float?
+  reviewCount     Int         @default(0)
+  isVerified      Boolean     @default(false)
+  isActive        Boolean     @default(true)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  reviews         SupplierReview[]
+
+  @@map("input_suppliers")
+}
+
+model SupplierReview {
+  id          String      @id @default(cuid())
+  supplierId  String
+  userId      String
+  rating      Int
+  comment     String?
+  
+  createdAt   DateTime    @default(now())
+
+  supplier    InputSupplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([supplierId, userId])
+  @@map("supplier_reviews")
+}
+
+// ============================================
+// SERVICE PROVIDERS (Vets, Extension Officers, Suppliers, etc.)
+// ============================================
+
+model ServiceProvider {
+  id              String      @id @default(cuid())
+  userId          String      @unique
+  
+  // Business Info
+  businessName    String
+  businessType    ServiceProviderType
+  description     String?     @db.Text
+  specializations Json?       // Array of specializations
+  
+  // Contact & Location
+  phone           String?
+  email           String?
+  website         String?
+  address         String?
+  region          String?
+  district        String?
+  serviceAreas    Json?       // Regions/districts they serve
+  
+  // Credentials (for vets, extension officers)
+  licenseNumber   String?
+  certifications  Json?       // Array of certifications
+  yearsExperience Int?
+  
+  // Business Details
+  operatingHours  Json?       // { monday: "8am-5pm", ... }
+  paymentMethods  Json?       // ["CASH", "MOBILE_MONEY", "BANK_TRANSFER"]
+  deliveryOptions Json?       // For suppliers: delivery, pickup, etc.
+  
+  // Media
+  logo            String?
+  coverImage      String?
+  gallery         Json?       // Array of image URLs
+  
+  // Ratings & Status
+  rating          Float?
+  reviewCount     Int         @default(0)
+  isVerified      Boolean     @default(false)
+  verifiedAt      DateTime?
+  isActive        Boolean     @default(true)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  services        ServiceListing[]
+  products        ProductListing[]
+  reviews         ServiceProviderReview[]
+  bookings        ServiceBooking[]
+
+  @@map("service_providers")
+}
+
+model ServiceListing {
+  id              String      @id @default(cuid())
+  providerId      String
+  
+  // Service Details
+  title           String
+  description     String?     @db.Text
+  category        ServiceCategory
+  
+  // Pricing
+  priceType       PriceType   @default(FIXED)
+  price           Float?
+  priceUnit       String?     // per hour, per visit, per animal, etc.
+  currency        String      @default("GHS")
+  
+  // Availability
+  isAvailable     Boolean     @default(true)
+  availableDays   Json?       // ["MONDAY", "TUESDAY", ...]
+  leadTime        Int?        // Days notice required
+  
+  // Location
+  serviceLocation ServiceLocation @default(BOTH)
+  travelRadius    Int?        // km radius for on-site services
+  
+  // Media
+  images          Json?
+  
+  // Status
+  status          ListingStatus @default(ACTIVE)
+  views           Int         @default(0)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  provider        ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  bookings        ServiceBooking[]
+
+  @@map("service_listings")
+}
+
+model ProductListing {
+  id              String      @id @default(cuid())
+  providerId      String
+  
+  // Product Details
+  name            String
+  description     String?     @db.Text
+  category        ProductCategory
+  brand           String?
+  sku             String?
+  
+  // Pricing & Stock
+  price           Float
+  currency        String      @default("GHS")
+  unit            String      // kg, bag, bottle, piece, etc.
+  minOrder        Float?
+  stockQuantity   Float?
+  inStock         Boolean     @default(true)
+  
+  // Specifications
+  specifications  Json?       // { weight: "50kg", composition: "NPK 15-15-15", etc. }
+  
+  // Media
+  images          Json?
+  
+  // Status
+  status          ListingStatus @default(ACTIVE)
+  views           Int         @default(0)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  provider        ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  orders          ProductOrder[]
+
+  @@map("product_listings")
+}
+
+model ServiceBooking {
+  id              String      @id @default(cuid())
+  serviceId       String
+  providerId      String
+  customerId      String      // User ID of the farmer/customer
+  
+  // Booking Details
+  scheduledDate   DateTime
+  scheduledTime   String?
+  duration        Int?        // in minutes
+  location        String?     // Address for on-site services
+  
+  // Status
+  status          BookingStatus @default(PENDING)
+  
+  // Notes
+  customerNotes   String?
+  providerNotes   String?
+  
+  // Pricing
+  agreedPrice     Float?
+  currency        String      @default("GHS")
+  
+  // Completion
+  completedAt     DateTime?
+  rating          Int?
+  review          String?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  service         ServiceListing @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  provider        ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@map("service_bookings")
+}
+
+model ProductOrder {
+  id              String      @id @default(cuid())
+  productId       String
+  customerId      String      // User ID of the farmer/customer
+  
+  // Order Details
+  quantity        Float
+  unitPrice       Float
+  totalPrice      Float
+  currency        String      @default("GHS")
+  
+  // Delivery
+  deliveryMethod  DeliveryMethod @default(PICKUP)
+  deliveryAddress String?
+  deliveryNotes   String?
+  
+  // Status
+  status          OrderStatus @default(PENDING)
+  
+  // Payment
+  paymentMethod   PaymentMethod?
+  paymentStatus   PaymentStatus @default(PENDING)
+  paidAt          DateTime?
+  
+  // Fulfillment
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  product         ProductListing @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_orders")
+}
+
+model ServiceProviderReview {
+  id          String      @id @default(cuid())
+  providerId  String
+  userId      String
+  rating      Int         // 1-5
+  comment     String?     @db.Text
+  
+  // What was reviewed
+  serviceId   String?     // Optional: specific service reviewed
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  provider    ServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, userId])
+  @@map("service_provider_reviews")
+}
+
+// ============================================
+// GOVERNMENT PROGRAMS
+// ============================================
+
+model GovernmentProgram {
+  id              String      @id @default(cuid())
+  name            String
+  shortName       String?
+  description     String
+  ministry        String?
+  eligibility     Json?
+  benefits        Json?
+  applicationUrl  String?
+  startDate       DateTime?
+  endDate         DateTime?
+  regions         Json?
+  status          ProgramStatus @default(ACTIVE)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  applications    ProgramApplication[]
+
+  @@map("government_programs")
+}
+
+model ProgramApplication {
+  id          String      @id @default(cuid())
+  programId   String
+  userId      String
+  status      ApplicationStatus @default(PENDING)
+  appliedAt   DateTime    @default(now())
+  notes       String?
+  
+  program     GovernmentProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([programId, userId])
+  @@map("program_applications")
+}
+
+// ============================================
+// FINANCIAL SERVICES
+// ============================================
+
+model LoanProduct {
+  id              String      @id @default(cuid())
+  name            String
+  provider        String
+  providerType    String      // Bank, MFI, Credit Union
+  description     String?
+  minAmount       Float?
+  maxAmount       Float?
+  interestRate    Float?
+  tenure          String?
+  requirements    Json?
+  eligibility     Json?
+  applicationUrl  String?
+  phone           String?
+  isActive        Boolean     @default(true)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("loan_products")
+}
+
+model InsuranceProduct {
+  id              String      @id @default(cuid())
+  name            String
+  provider        String
+  type            String      // Crop, Livestock, Weather Index
+  description     String?
+  coverage        Json?
+  premium         String?
+  claimProcess    String?
+  requirements    Json?
+  applicationUrl  String?
+  phone           String?
+  isActive        Boolean     @default(true)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("insurance_products")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum ForumCategory {
+  CROPS
+  LIVESTOCK
+  AQUACULTURE
+  PEST_DISEASE
+  MARKET
+  WEATHER
+  EQUIPMENT
+  FINANCE
+  GENERAL
+}
+
+enum GroupType {
+  COOPERATIVE
+  ASSOCIATION
+  VSLA
+  COMMUNITY
+  OTHER
+}
+
+enum GroupRole {
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum ListingCategory {
+  CROPS
+  LIVESTOCK
+  PRODUCE
+  EQUIPMENT
+  SERVICES
+}
+
+enum ListingStatus {
+  ACTIVE
+  SOLD
+  EXPIRED
+  CANCELLED
+}
+
+enum InquiryStatus {
+  PENDING
+  RESPONDED
+  CLOSED
+}
+
+enum SupplierType {
+  SEEDS
+  FERTILIZERS
+  AGROCHEMICALS
+  VETERINARY
+  EQUIPMENT
+  FEED
+  GENERAL
+}
+
+enum ProgramStatus {
+  ACTIVE
+  CLOSED
+  UPCOMING
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum AccountType {
+  FARMER          // Primary user - manages farms
+  SUPPLIER        // Sells agricultural inputs (seeds, fertilizers, equipment)
+  VENDOR          // General vendor/retailer
+  VETERINARIAN    // Animal health services
+  EXTENSION_OFFICER // Agricultural extension services
+  BUYER           // Purchases farm produce
+  AGGREGATOR      // Buys in bulk from multiple farmers
+}
+
+enum SubscriptionTier {
+  FREE
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum FarmerType {
+  SMALLHOLDER
+  COMMERCIAL
+  COOPERATIVE
+}
+
+enum Language {
+  ENGLISH
+  TWI
+  GA
+  EWE
+  HAUSA
+  DAGBANI
+}
+
+enum Units {
+  METRIC
+  IMPERIAL
+}
+
+enum SizeUnit {
+  HECTARES
+  ACRES
+  SQUARE_METERS
+}
+
+enum CropCategory {
+  CEREALS_GRAINS
+  ROOTS_TUBERS
+  LEGUMES_PULSES
+  TREE_CROPS
+  VEGETABLES
+  FRUITS
+}
+
+enum CropStatus {
+  PLANNED
+  PLANTED
+  GROWING
+  HARVESTING
+  COMPLETED
+  FAILED
+}
+
+enum CropActivityType {
+  LAND_PREPARATION
+  PLANTING
+  FERTILIZER_APPLICATION
+  PEST_TREATMENT
+  DISEASE_TREATMENT
+  IRRIGATION
+  WEEDING
+  PRUNING
+  HARVESTING
+  POST_HARVEST
+  OTHER
+}
+
+enum LivestockCategory {
+  RUMINANTS
+  POULTRY
+  PIGS
+  NON_CONVENTIONAL
+  AQUACULTURE
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  UNKNOWN
+}
+
+enum AnimalSource {
+  PURCHASED
+  BORN_ON_FARM
+  GIFTED
+  OTHER
+}
+
+enum AnimalStatus {
+  ACTIVE
+  SOLD
+  DECEASED
+  TRANSFERRED
+}
+
+enum HealthRecordType {
+  VACCINATION
+  DEWORMING
+  DISEASE
+  TREATMENT
+  VETERINARY_VISIT
+  MORTALITY
+}
+
+enum HealthRecordStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+  OVERDUE
+}
+
+enum ProductionType {
+  EGGS
+  MILK
+  WEIGHT
+  OTHER
+}
+
+enum ProductionRecordStatus {
+  EXPECTED      // Auto-generated, waiting for actual data
+  RECORDED      // User has entered actual production
+  MISSED        // Production period passed without recording
+  BELOW_TARGET  // Actual was below expected
+  ON_TARGET     // Actual met or exceeded expected
+}
+
+enum PondStatus {
+  ACTIVE
+  HARVESTED
+  FALLOW
+}
+
+enum ExpenseCategory {
+  SEEDS
+  FERTILIZERS
+  PESTICIDES
+  VETERINARY
+  FEED
+  LABOR
+  EQUIPMENT
+  TRANSPORTATION
+  UTILITIES
+  OTHER
+}
+
+enum PaymentMethod {
+  CASH
+  MOBILE_MONEY
+  BANK_TRANSFER
+  CREDIT
+  OTHER
+}
+
+enum TaskCategory {
+  CROP
+  LIVESTOCK
+  AQUACULTURE
+  FINANCIAL
+  GENERAL
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  OVERDUE
+}
+
+enum PriceCondition {
+  ABOVE
+  BELOW
+}
+
+enum NotificationType {
+  TASK_REMINDER
+  TASK_OVERDUE
+  PRICE_ALERT
+  WEATHER_ALERT
+  PEST_ALERT
+  SYSTEM
+  MESSAGE
+}
+
+// ============================================
+// DECISION SUPPORT ENGINE (DSE)
+// ============================================
+
+// Event-sourced farm ledger - append-only events
+model FarmEvent {
+  id            String      @id @default(cuid())
+  userId        String
+  farmId        String?
+  
+  // Event identification
+  entityType    EntityType
+  entityId      String?
+  eventType     String      // e.g., CROP_PLANTED, FERTILIZER_APPLIED, VACCINATION_GIVEN
+  
+  // Event data
+  payload       Json        // Flexible event data
+  occurredAt    DateTime    // When the event actually happened
+  
+  // Offline sync support
+  offlineId     String?     @unique // Client-generated ID for dedup
+  source        EventSource @default(USER_INPUT)
+  
+  // Metadata
+  createdAt     DateTime    @default(now())
+  processedAt   DateTime?   // When DSE processed this event
+  
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farm          Farm?       @relation(fields: [farmId], references: [id])
+  
+  @@index([userId, occurredAt])
+  @@index([entityType, entityId])
+  @@index([eventType])
+  @@index([offlineId])
+  @@map("farm_events")
+}
+
+// Farm state snapshots - computed from events
+model FarmSnapshot {
+  id            String      @id @default(cuid())
+  userId        String
+  farmId        String
+  
+  // Snapshot type
+  snapshotType  SnapshotType
+  periodStart   DateTime?
+  periodEnd     DateTime?
+  
+  // Computed state
+  state         Json        // Current state data
+  metrics       Json?       // Computed metrics
+  
+  // Versioning
+  version       Int         @default(1)
+  lastEventId   String?     // Last event processed
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farm          Farm        @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  
+  @@unique([farmId, snapshotType])
+  @@index([userId])
+  @@map("farm_snapshots")
+}
+
+// Feature store - derived metrics for ML/rules
+model FarmFeature {
+  id            String      @id @default(cuid())
+  userId        String
+  farmId        String?
+  entityType    EntityType?
+  entityId      String?
+  
+  // Feature identification
+  featureName   String      // e.g., yield_per_hectare, fertilizer_gap_days
+  featureGroup  String?     // e.g., crop_performance, livestock_health
+  
+  // Feature value
+  value         Float
+  valueJson     Json?       // For complex features
+  
+  // Time context
+  computedAt    DateTime    @default(now())
+  validFrom     DateTime
+  validUntil    DateTime?
+  
+  // Metadata
+  version       String?     // Feature computation version
+  
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farm          Farm?       @relation(fields: [farmId], references: [id])
+  
+  @@unique([userId, farmId, entityType, entityId, featureName, validFrom])
+  @@index([featureName])
+  @@index([featureGroup])
+  @@index([computedAt])
+  @@map("farm_features")
+}
+
+// Recommendations generated by DSE
+model Recommendation {
+  id            String      @id @default(cuid())
+  userId        String
+  farmId        String?
+  
+  // Recommendation content
+  category      RecommendationCategory
+  priority      RecommendationPriority
+  title         String
+  description   String?
+  actionSteps   Json        // Array of action steps
+  reason        Json        // Array of reasons
+  
+  // Impact & confidence
+  impactType    String?     // e.g., yield_risk_reduction, cost_saving
+  impactValue   Float?
+  confidence    Float       // 0-1 score
+  confidenceLabel ConfidenceLevel
+  
+  // Evidence & traceability
+  evidence      Json?       // Rules fired, features used, etc.
+  modelVersion  String      // Version of DSE that generated this
+  
+  // Validity
+  validFrom     DateTime    @default(now())
+  validUntil    DateTime?
+  
+  // Status
+  status        RecommendationStatus @default(ACTIVE)
+  dismissedAt   DateTime?
+  completedAt   DateTime?
+  
+  // Related entities
+  entityType    EntityType?
+  entityId      String?
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  farm          Farm?       @relation(fields: [farmId], references: [id])
+  feedback      RecommendationFeedback[]
+  
+  @@index([userId, status])
+  @@index([category])
+  @@index([priority])
+  @@index([validUntil])
+  @@map("recommendations")
+}
+
+// User feedback on recommendations
+model RecommendationFeedback {
+  id                String      @id @default(cuid())
+  recommendationId  String
+  userId            String
+  
+  // Feedback type
+  feedbackType      FeedbackType
+  rating            Int?        // 1-5 if applicable
+  comment           String?
+  
+  // Outcome tracking
+  actionTaken       Boolean?
+  outcomeNotes      String?
+  
+  createdAt         DateTime    @default(now())
+  
+  recommendation    Recommendation @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([recommendationId])
+  @@index([userId])
+  @@index([feedbackType])
+  @@map("recommendation_feedback")
+}
+
+// DSE Rules - stored rules for the rules engine
+model DseRule {
+  id            String      @id @default(cuid())
+  
+  // Rule identification
+  ruleCode      String      @unique // e.g., MAIZE_TOPDRESS_WINDOW
+  ruleName      String
+  description   String?
+  
+  // Rule categorization
+  category      RuleCategory
+  entityType    EntityType?
+  cropType      String?     // Specific crop if applicable
+  livestockType String?     // Specific livestock if applicable
+  
+  // Rule definition
+  conditions    Json        // Condition expressions
+  actions       Json        // What to recommend
+  priority      Int         @default(50) // Higher = more important
+  
+  // Timing
+  seasonalOnly  Boolean     @default(false)
+  validSeasons  Json?       // Which seasons this applies to
+  regionSpecific Boolean    @default(false)
+  validRegions  Json?       // Which regions this applies to
+  
+  // Status
+  isActive      Boolean     @default(true)
+  version       Int         @default(1)
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  @@index([category])
+  @@index([entityType])
+  @@index([isActive])
+  @@map("dse_rules")
+}
+
+// Agronomy schedules - crop calendars
+model AgronomySchedule {
+  id            String      @id @default(cuid())
+  
+  // Crop identification
+  cropId        String?
+  cropType      String      // Fallback if no specific crop
+  variety       String?
+  
+  // Activity
+  activityType  String      // e.g., PLANTING, FERTILIZER_1, WEEDING_1
+  activityName  String
+  description   String?
+  
+  // Timing (days from planting)
+  daysFromPlanting Int?
+  daysRangeStart   Int?
+  daysRangeEnd     Int?
+  
+  // Or calendar-based
+  calendarMonth    Int?      // 1-12
+  calendarWeek     Int?      // 1-52
+  
+  // Conditions
+  conditions    Json?       // Weather, soil, etc. conditions
+  
+  // Recommendations
+  recommendations Json?     // What to do
+  warningDays   Int         @default(3) // Days before to warn
+  
+  // Regional variations
+  region        String?
+  agroZone      String?
+  
+  isActive      Boolean     @default(true)
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  crop          Crop?       @relation(fields: [cropId], references: [id])
+  
+  @@index([cropType])
+  @@index([activityType])
+  @@map("agronomy_schedules")
+}
+
+// Livestock health schedules - vaccination calendars
+model LivestockHealthSchedule {
+  id            String      @id @default(cuid())
+  
+  // Livestock identification
+  livestockId   String?
+  livestockType String      // Fallback
+  breed         String?
+  
+  // Health activity
+  activityType  HealthActivityType
+  activityName  String
+  description   String?
+  
+  // Timing
+  ageInDays     Int?        // Age when to perform
+  ageRangeStart Int?
+  ageRangeEnd   Int?
+  intervalDays  Int?        // Repeat interval
+  
+  // Or calendar-based
+  calendarMonth Int?
+  
+  // Conditions
+  conditions    Json?
+  
+  // Recommendations
+  recommendations Json?
+  warningDays   Int         @default(7)
+  
+  // Regional variations
+  region        String?
+  
+  isActive      Boolean     @default(true)
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  
+  livestock     Livestock?  @relation(fields: [livestockId], references: [id])
+  
+  @@index([livestockType])
+  @@index([activityType])
+  @@map("livestock_health_schedules")
+}
+
+// DSE Enums
+enum EntityType {
+  FARM
+  CROP_ENTRY
+  LIVESTOCK_ENTRY
+  POND_ENTRY
+  TASK
+  EXPENSE
+  INCOME
+}
+
+enum EventSource {
+  USER_INPUT
+  SYSTEM_GENERATED
+  SENSOR
+  EXTERNAL_API
+  SYNC
+}
+
+enum SnapshotType {
+  CURRENT
+  DAILY
+  WEEKLY
+  MONTHLY
+  SEASONAL
+  YEARLY
+}
+
+enum RecommendationCategory {
+  CROP
+  LIVESTOCK
+  AQUACULTURE
+  FINANCE
+  MARKET
+  WEATHER
+  TASK
+  HEALTH
+}
+
+enum RecommendationPriority {
+  URGENT
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum RecommendationStatus {
+  ACTIVE
+  DISMISSED
+  COMPLETED
+  EXPIRED
+  SNOOZED
+}
+
+enum ConfidenceLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum FeedbackType {
+  HELPFUL
+  NOT_HELPFUL
+  COMPLETED
+  DISMISSED
+  INCORRECT
+}
+
+enum RuleCategory {
+  CROP_CALENDAR
+  LIVESTOCK_HEALTH
+  WEATHER_ALERT
+  MARKET_ALERT
+  FINANCIAL
+  PEST_DISEASE
+  GENERAL
+}
+
+enum HealthActivityType {
+  VACCINATION
+  DEWORMING
+  CHECKUP
+  BREEDING
+  WEANING
+}
+
+// ============================================
+// SERVICE PROVIDER ENUMS
+// ============================================
+
+enum ServiceProviderType {
+  VETERINARIAN
+  EXTENSION_OFFICER
+  INPUT_SUPPLIER
+  EQUIPMENT_SUPPLIER
+  FEED_SUPPLIER
+  SEED_SUPPLIER
+  AGROCHEMICAL_SUPPLIER
+  FARM_CONSULTANT
+  SOIL_TESTING
+  IRRIGATION_SERVICES
+  TRANSPORT_LOGISTICS
+  PROCESSING_SERVICES
+  STORAGE_SERVICES
+  // Livestock-specific suppliers
+  LIVESTOCK_INPUT_SUPPLIER    // General livestock inputs
+  POULTRY_EQUIPMENT_SUPPLIER  // Cages, incubators, feeders, drinkers
+  DAIRY_EQUIPMENT_SUPPLIER    // Milking machines, cooling tanks
+  HATCHERY_SUPPLIER           // Day-old chicks, hatching eggs
+  BREEDING_SERVICES           // AI services, breeding stock
+  ANIMAL_HEALTH_SUPPLIER      // Vaccines, medications, supplements
+  OTHER
+}
+
+enum ServiceCategory {
+  VETERINARY_CONSULTATION
+  VETERINARY_SURGERY
+  VACCINATION_SERVICE
+  DEWORMING_SERVICE
+  ARTIFICIAL_INSEMINATION
+  FARM_ADVISORY
+  SOIL_TESTING
+  CROP_ADVISORY
+  PEST_MANAGEMENT
+  DISEASE_DIAGNOSIS
+  TRAINING_WORKSHOP
+  EQUIPMENT_RENTAL
+  TRANSPORT
+  STORAGE
+  PROCESSING
+  OTHER
+}
+
+enum ProductCategory {
+  SEEDS
+  FERTILIZERS
+  PESTICIDES
+  HERBICIDES
+  FUNGICIDES
+  ANIMAL_FEED
+  VETERINARY_DRUGS
+  FARM_EQUIPMENT
+  IRRIGATION_EQUIPMENT
+  PACKAGING_MATERIALS
+  FARM_TOOLS
+  PROTECTIVE_GEAR
+  // Livestock-specific categories
+  POULTRY_FEED              // Layer mash, broiler feed, chick starter
+  CATTLE_FEED               // Dairy feed, beef cattle feed, concentrates
+  PIG_FEED                  // Sow feed, grower feed, finisher feed
+  FISH_FEED                 // Floating feed, sinking feed
+  FEED_SUPPLEMENTS          // Vitamins, minerals, probiotics
+  VACCINES                  // Poultry vaccines, cattle vaccines
+  DEWORMERS                 // Internal/external parasite control
+  ANTIBIOTICS               // Animal antibiotics and treatments
+  GROWTH_PROMOTERS          // Legal growth enhancers
+  DISINFECTANTS             // Farm hygiene products
+  POULTRY_EQUIPMENT         // Cages, feeders, drinkers, incubators
+  DAIRY_EQUIPMENT           // Milking machines, cooling tanks
+  LIVESTOCK_HOUSING         // Pens, crates, fencing materials
+  BREEDING_SUPPLIES         // AI equipment, semen, breeding stock
+  DAY_OLD_CHICKS            // DOCs, hatching eggs
+  LIVESTOCK_BEDDING         // Wood shavings, straw, sawdust
+  OTHER
+}
+
+enum PriceType {
+  FIXED
+  NEGOTIABLE
+  QUOTE_BASED
+  HOURLY
+  PER_UNIT
+}
+
+enum ServiceLocation {
+  ON_SITE      // Provider comes to farm
+  AT_FACILITY  // Customer goes to provider
+  BOTH
+  REMOTE       // Online/phone consultation
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  RETURNED
+}
+
+enum DeliveryMethod {
+  PICKUP
+  DELIVERY
+  BOTH
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  REFUNDED
+  FAILED
+}
+
+// ============================================
+// SUBSCRIPTION & BILLING SYSTEM
+// ============================================
+
+model SubscriptionPlan {
+  id              String    @id @default(cuid())
+  
+  // Plan identification
+  name            String    // Free, Pro, Business, Enterprise
+  slug            String    @unique // free, pro, business, enterprise
+  description     String?
+  
+  // Pricing
+  priceMonthly    Float     @default(0) // In GHS
+  priceYearly     Float     @default(0) // In GHS (discounted)
+  currency        String    @default("GHS")
+  
+  // Target audience
+  targetAudience  PlanAudience @default(FARMER)
+  
+  // Limits
+  maxFarms        Int       @default(1)
+  maxPlots        Int       @default(5)
+  maxRecordsPerMonth Int    @default(50)
+  maxUsers        Int       @default(1)
+  maxPriceAlerts  Int       @default(3)
+  maxDseRecommendations Int @default(5)
+  maxExportsPerMonth Int    @default(0)
+  maxListings     Int       @default(5) // For service providers
+  
+  // Feature flags (JSON for flexibility)
+  features        Json      // { advancedAnalytics: true, realTimePrices: true, etc. }
+  
+  // Display
+  isPopular       Boolean   @default(false)
+  displayOrder    Int       @default(0)
+  isActive        Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  subscriptions   Subscription[]
+  
+  @@map("subscription_plans")
+}
+
+model Subscription {
+  id              String    @id @default(cuid())
+  userId          String
+  planId          String
+  
+  // Status
+  status          SubscriptionStatus @default(ACTIVE)
+  
+  // Billing cycle
+  billingCycle    BillingCycle @default(MONTHLY)
+  
+  // Dates
+  startDate       DateTime  @default(now())
+  endDate         DateTime?
+  trialEndsAt     DateTime?
+  cancelledAt     DateTime?
+  
+  // Payment
+  lastPaymentAt   DateTime?
+  nextPaymentAt   DateTime?
+  paymentMethod   String?   // momo, card, bank
+  paymentReference String?
+  
+  // Auto-renewal
+  autoRenew       Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            SubscriptionPlan @relation(fields: [planId], references: [id])
+  payments        Payment[]
+  
+  @@index([userId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id              String    @id @default(cuid())
+  subscriptionId  String?
+  userId          String
+  
+  // Payment details
+  amount          Float
+  currency        String    @default("GHS")
+  paymentType     PaymentType
+  paymentMethod   String?   // momo_mtn, momo_vodafone, card, bank
+  
+  // Transaction
+  transactionId   String?   @unique
+  reference       String?
+  
+  // Status
+  status          PaymentStatus @default(PENDING)
+  
+  // Metadata
+  description     String?
+  metadata        Json?
+  
+  // Timestamps
+  paidAt          DateTime?
+  failedAt        DateTime?
+  refundedAt      DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  subscription    Subscription? @relation(fields: [subscriptionId], references: [id])
+  
+  @@index([userId])
+  @@index([status])
+  @@map("payments")
+}
+
+model UsageTracking {
+  id              String    @id @default(cuid())
+  userId          String
+  
+  // Period
+  periodStart     DateTime
+  periodEnd       DateTime
+  
+  // Usage counts
+  recordsCreated  Int       @default(0)
+  apiCalls        Int       @default(0)
+  dseRecommendations Int    @default(0)
+  exportsGenerated Int      @default(0)
+  priceAlertsCreated Int    @default(0)
+  listingsCreated Int       @default(0)
+  
+  // Storage
+  storageUsedMb   Float     @default(0)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([userId, periodStart])
+  @@index([userId])
+  @@map("usage_tracking")
+}
+
+model FeatureFlag {
+  id              String    @id @default(cuid())
+  
+  // Feature identification
+  name            String    @unique // e.g., advanced_analytics, real_time_prices
+  displayName     String
+  description     String?
+  
+  // Availability
+  requiredPlan    SubscriptionTier @default(FREE)
+  isEnabled       Boolean   @default(true)
+  
+  // Rollout
+  rolloutPercentage Int     @default(100) // For gradual rollout
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@map("feature_flags")
+}
+
+// Inventory Management for Business tier
+model InventoryItem {
+  id              String    @id @default(cuid())
+  userId          String
+  farmId          String?
+  
+  // Item details
+  name            String
+  category        InventoryCategory
+  sku             String?
+  
+  // Quantity
+  quantity        Float     @default(0)
+  unit            String
+  minQuantity     Float?    // Alert when below this
+  maxQuantity     Float?
+  
+  // Pricing
+  unitCost        Float?
+  totalValue      Float?
+  
+  // Supplier
+  supplierId      String?
+  supplierName    String?
+  
+  // Location
+  location        String?
+  
+  // Expiry
+  expiryDate      DateTime?
+  batchNumber     String?
+  
+  // Status
+  status          InventoryStatus @default(IN_STOCK)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movements       InventoryMovement[]
+  
+  @@index([userId])
+  @@index([category])
+  @@map("inventory_items")
+}
+
+model InventoryMovement {
+  id              String    @id @default(cuid())
+  inventoryItemId String
+  userId          String
+  
+  // Movement details
+  movementType    MovementType
+  quantity        Float
+  previousQuantity Float
+  newQuantity     Float
+  
+  // Reference
+  referenceType   String?   // expense, crop_activity, livestock_health, etc.
+  referenceId     String?
+  
+  // Notes
+  notes           String?
+  
+  createdAt       DateTime  @default(now())
+  
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  
+  @@index([inventoryItemId])
+  @@index([userId])
+  @@map("inventory_movements")
+}
+
+// Multi-user access for Business tier
+model TeamMember {
+  id              String    @id @default(cuid())
+  ownerId         String    // The account owner
+  memberId        String    // The team member user
+  
+  // Role
+  role            TeamRole  @default(VIEWER)
+  
+  // Permissions (JSON for flexibility)
+  permissions     Json?     // { canEditCrops: true, canViewFinances: false, etc. }
+  
+  // Status
+  status          TeamMemberStatus @default(PENDING)
+  invitedAt       DateTime  @default(now())
+  acceptedAt      DateTime?
+  
+  // Access scope
+  farmIds         String[]  // Which farms they can access (empty = all)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  owner           User      @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  member          User      @relation("TeamMemberUser", fields: [memberId], references: [id], onDelete: Cascade)
+  
+  @@unique([ownerId, memberId])
+  @@index([ownerId])
+  @@index([memberId])
+  @@map("team_members")
+}
+
+// Featured listings for service providers
+model FeaturedListing {
+  id              String    @id @default(cuid())
+  
+  // What's being featured
+  listingType     FeaturedListingType
+  listingId       String    // MarketListing, ProductListing, or ServiceListing ID
+  providerId      String?   // ServiceProvider ID if applicable
+  
+  // Placement
+  placement       FeaturedPlacement
+  position        Int       @default(0)
+  
+  // Duration
+  startDate       DateTime  @default(now())
+  endDate         DateTime
+  
+  // Pricing
+  amountPaid      Float
+  paymentId       String?
+  
+  // Performance
+  impressions     Int       @default(0)
+  clicks          Int       @default(0)
+  
+  // Status
+  status          FeaturedStatus @default(ACTIVE)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([listingType, status])
+  @@index([placement])
+  @@map("featured_listings")
+}
+
+// Transaction fees on marketplace
+model MarketplaceTransaction {
+  id              String    @id @default(cuid())
+  
+  // Parties
+  sellerId        String
+  buyerId         String
+  
+  // Listing
+  listingType     String    // market_listing, product_order
+  listingId       String
+  
+  // Amounts
+  subtotal        Float
+  platformFee     Float     // Our commission
+  platformFeePercent Float  @default(3.0)
+  sellerAmount    Float     // What seller receives
+  
+  // Status
+  status          TransactionStatus @default(PENDING)
+  
+  // Payment
+  buyerPaymentId  String?
+  sellerPayoutId  String?
+  
+  // Timestamps
+  completedAt     DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([sellerId])
+  @@index([buyerId])
+  @@index([status])
+  @@map("marketplace_transactions")
+}
+
+// Promotional tools
+model Promotion {
+  id              String    @id @default(cuid())
+  providerId      String    // ServiceProvider ID
+  
+  // Promotion details
+  name            String
+  description     String?
+  promotionType   PromotionType
+  
+  // Discount
+  discountType    DiscountType
+  discountValue   Float     // Percentage or fixed amount
+  minPurchase     Float?
+  maxDiscount     Float?
+  
+  // Validity
+  startDate       DateTime
+  endDate         DateTime
+  
+  // Usage limits
+  maxUses         Int?
+  usedCount       Int       @default(0)
+  maxUsesPerUser  Int       @default(1)
+  
+  // Applicable to
+  applicableTo    Json?     // { productIds: [], serviceIds: [], categories: [] }
+  
+  // Code
+  code            String?   @unique
+  
+  // Status
+  isActive        Boolean   @default(true)
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  usages          PromotionUsage[]
+  
+  @@index([providerId])
+  @@index([code])
+  @@map("promotions")
+}
+
+model PromotionUsage {
+  id              String    @id @default(cuid())
+  promotionId     String
+  userId          String
+  orderId         String?
+  
+  discountAmount  Float
+  usedAt          DateTime  @default(now())
+  
+  promotion       Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  
+  @@index([promotionId])
+  @@index([userId])
+  @@map("promotion_usages")
+}
+
+// Subscription enums
+enum PlanAudience {
+  FARMER
+  SERVICE_PROVIDER
+  BOTH
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+  PAUSED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum PaymentType {
+  SUBSCRIPTION
+  ONE_TIME
+  FEATURED_LISTING
+  TRANSACTION_FEE
+  REFUND
+}
+
+enum InventoryCategory {
+  SEEDS
+  FERTILIZERS
+  PESTICIDES
+  HERBICIDES
+  FUNGICIDES
+  ANIMAL_FEED
+  VETERINARY_DRUGS
+  VACCINES
+  EQUIPMENT
+  TOOLS
+  PACKAGING
+  FUEL
+  OTHER
+}
+
+enum InventoryStatus {
+  IN_STOCK
+  LOW_STOCK
+  OUT_OF_STOCK
+  EXPIRED
+  DISCONTINUED
+}
+
+enum MovementType {
+  PURCHASE
+  USAGE
+  SALE
+  ADJUSTMENT
+  TRANSFER
+  RETURN
+  EXPIRED
+  DAMAGED
+}
+
+enum TeamRole {
+  ADMIN       // Full access
+  MANAGER     // Can edit most things
+  WORKER      // Can log activities
+  VIEWER      // Read-only
+}
+
+enum TeamMemberStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum FeaturedListingType {
+  MARKET_LISTING
+  PRODUCT_LISTING
+  SERVICE_LISTING
+  PROVIDER_PROFILE
+}
+
+enum FeaturedPlacement {
+  HOMEPAGE_BANNER
+  HOMEPAGE_FEATURED
+  CATEGORY_TOP
+  SEARCH_TOP
+  SIDEBAR
+}
+
+enum FeaturedStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  DISPUTED
+}
+
+enum PromotionType {
+  DISCOUNT
+  FREE_SHIPPING
+  BUY_ONE_GET_ONE
+  BUNDLE
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+// ============================================
+// SUPPORT & ADMIN MODELS
+// ============================================
+
+// Support Tickets for user assistance
+model SupportTicket {
+  id              String              @id @default(cuid())
+  userId          String
+  
+  // Ticket details
+  subject         String
+  description     String
+  category        SupportCategory
+  priority        SupportPriority     @default(MEDIUM)
+  status          SupportStatus       @default(OPEN)
+  
+  // Assignment
+  assignedToId    String?             // Admin user assigned to handle
+  
+  // Resolution
+  resolution      String?
+  resolvedAt      DateTime?
+  
+  // Metadata
+  attachments     Json?               // Array of file URLs
+  
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  
+  user            User                @relation("UserTickets", fields: [userId], references: [id], onDelete: Cascade)
+  assignedTo      User?               @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  messages        SupportMessage[]
+  
+  @@index([userId])
+  @@index([assignedToId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+// Messages within a support ticket
+model SupportMessage {
+  id              String              @id @default(cuid())
+  ticketId        String
+  senderId        String
+  
+  message         String
+  isInternal      Boolean             @default(false)  // Internal notes not visible to user
+  attachments     Json?
+  
+  createdAt       DateTime            @default(now())
+  
+  ticket          SupportTicket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender          User                @relation(fields: [senderId], references: [id])
+  
+  @@index([ticketId])
+  @@map("support_messages")
+}
+
+// Audit logs for admin actions
+model AuditLog {
+  id              String              @id @default(cuid())
+  userId          String              // Admin who performed the action
+  
+  // Action details
+  action          String              // e.g., "user.suspend", "subscription.upgrade"
+  entityType      String              // e.g., "User", "Subscription"
+  entityId        String?             // ID of the affected entity
+  
+  // Before/After state
+  previousState   Json?
+  newState        Json?
+  
+  // Context
+  ipAddress       String?
+  userAgent       String?
+  notes           String?
+  
+  createdAt       DateTime            @default(now())
+  
+  user            User                @relation(fields: [userId], references: [id])
+  
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// System announcements
+model Announcement {
+  id              String              @id @default(cuid())
+  
+  title           String
+  content         String
+  type            AnnouncementType    @default(INFO)
+  
+  // Targeting
+  targetRoles     String[]            // Empty = all users
+  targetRegions   String[]            // Empty = all regions
+  
+  // Scheduling
+  publishAt       DateTime            @default(now())
+  expiresAt       DateTime?
+  
+  // Status
+  isActive        Boolean             @default(true)
+  
+  createdById     String
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  
+  createdBy       User                @relation(fields: [createdById], references: [id])
+  
+  @@index([isActive, publishAt])
+  @@map("announcements")
+}
+
+// Enums for support system
+enum SupportCategory {
+  ACCOUNT
+  BILLING
+  TECHNICAL
+  FEATURE_REQUEST
+  BUG_REPORT
+  GENERAL
+}
+
+enum SupportPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SupportStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_USER
+  RESOLVED
+  CLOSED
+}
+
+enum AnnouncementType {
+  INFO
+  WARNING
+  SUCCESS
+  MAINTENANCE
+}

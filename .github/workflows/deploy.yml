@@ -1,0 +1,116 @@
+name: Deploy to cPanel
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Build Next.js app
+        run: npm run build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Create deployment package
+        run: |
+          mkdir -p deploy
+          cp -r .next deploy/
+          cp -r public deploy/
+          cp -r prisma deploy/
+          cp package.json deploy/
+          cp package-lock.json deploy/
+          cp server.js deploy/
+          cp next.config.ts deploy/
+          cp tsconfig.json deploy/
+          cp -r src deploy/
+
+      - name: Deploy to cPanel via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USERNAME }}
+          password: ${{ secrets.CPANEL_PASSWORD }}
+          port: ${{ secrets.CPANEL_PORT }}
+          script: |
+            cd ${{ secrets.APP_PATH }}
+            # Backup current deployment
+            if [ -d ".next" ]; then
+              rm -rf .next.backup
+              mv .next .next.backup
+            fi
+
+      - name: Upload files via SFTP
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.4
+        with:
+          server: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USERNAME }}
+          password: ${{ secrets.CPANEL_PASSWORD }}
+          port: ${{ secrets.CPANEL_PORT }}
+          local_path: './deploy/*'
+          remote_path: ${{ secrets.APP_PATH }}
+          sftp_only: true
+
+      - name: Install dependencies and restart app
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USERNAME }}
+          password: ${{ secrets.CPANEL_PASSWORD }}
+          port: ${{ secrets.CPANEL_PORT }}
+          script: |
+            cd ${{ secrets.APP_PATH }}
+            
+            # Install production dependencies
+            npm ci --production
+            
+            # Generate Prisma client
+            npx prisma generate
+            
+            # Run database migrations (if any)
+            npx prisma db push --accept-data-loss
+            
+            # Restart the Node.js app via cPanel API
+            # Method 1: Using touch to trigger restart
+            touch tmp/restart.txt
+            
+            # Clean up backup if deployment successful
+            rm -rf .next.backup
+            
+            echo "Deployment completed successfully!"
+
+      - name: Deployment failed - Rollback
+        if: failure()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.CPANEL_HOST }}
+          username: ${{ secrets.CPANEL_USERNAME }}
+          password: ${{ secrets.CPANEL_PASSWORD }}
+          port: ${{ secrets.CPANEL_PORT }}
+          script: |
+            cd ${{ secrets.APP_PATH }}
+            if [ -d ".next.backup" ]; then
+              rm -rf .next
+              mv .next.backup .next
+              touch tmp/restart.txt
+              echo "Rolled back to previous version"
+            fi

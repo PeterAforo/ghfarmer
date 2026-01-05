@@ -1,21 +1,7 @@
-const { execSync } = require('child_process');
-const path = require('path');
+// This script is no longer needed for cPanel deployment
+// Prisma client is generated during GitHub Actions build
+// Database schema is pushed from local machine
 
-console.log('🔧 Setting up database...');
-
-const rootDir = path.join(__dirname, '..');
-const prismaPath = path.join(rootDir, 'node_modules', '.bin', 'prisma');
-
-try {
-  console.log('📦 Generating Prisma Client...');
-  console.log('Using prisma at:', prismaPath);
-  execSync(prismaPath + ' generate', { stdio: 'inherit', cwd: rootDir, shell: true });
-  
-  console.log('🗄️ Pushing schema to database...');
-  execSync(prismaPath + ' db push --accept-data-loss', { stdio: 'inherit', cwd: rootDir, shell: true });
-  
-  console.log('✅ Database setup complete!');
-} catch (error) {
-  console.error('❌ Setup failed:', error.message);
-  process.exit(1);
-}
+console.log('✅ Setup complete!');
+console.log('Note: Prisma client is pre-generated during build.');
+console.log('Database schema should be pushed from local machine using: npx prisma db push');

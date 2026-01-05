@@ -38,6 +38,8 @@ jobs:
           cp -r .next deploy/
           cp -r public deploy/
           cp -r prisma deploy/
+          cp -r node_modules/.prisma deploy/node_modules/.prisma
+          cp -r node_modules/@prisma deploy/node_modules/@prisma
           cp package.json deploy/
           cp package-lock.json deploy/
           cp server.js deploy/
@@ -63,8 +65,7 @@ jobs:
           port: 22
           script: |
             cd ${{ secrets.APP_PATH }}
-            npm ci --production
-            npx prisma generate
-            npx prisma db push --accept-data-loss
+            npm ci --production --ignore-scripts
+            mkdir -p tmp
             touch tmp/restart.txt
             echo "✅ Deployment complete!"

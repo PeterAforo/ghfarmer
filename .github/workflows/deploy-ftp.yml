@@ -33,7 +33,11 @@ jobs:
         run: npm run build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL }}
           NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          NEXT_PUBLIC_APP_NAME: "Ghana Farmer"
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXTAUTH_URL }}
 
       - name: Prepare deployment files
         run: |
@@ -71,6 +75,9 @@ jobs:
           echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> deploy/.env
           echo "NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}" >> deploy/.env
           echo "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}" >> deploy/.env
+          echo "OPENWEATHER_API_KEY=${{ secrets.OPENWEATHER_API_KEY }}" >> deploy/.env
+          echo "NEXT_PUBLIC_APP_NAME=Ghana Farmer" >> deploy/.env
+          echo "NEXT_PUBLIC_APP_URL=${{ secrets.NEXTAUTH_URL }}" >> deploy/.env
 
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5

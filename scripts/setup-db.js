@@ -1,13 +1,16 @@
 const { execSync } = require('child_process');
+const path = require('path');
 
 console.log('🔧 Setting up database...');
 
+const prismaPath = path.join(__dirname, '..', 'node_modules', '.bin', 'prisma');
+
 try {
   console.log('📦 Generating Prisma Client...');
-  execSync('npx prisma generate', { stdio: 'inherit' });
+  execSync(`"${prismaPath}" generate`, { stdio: 'inherit', cwd: path.join(__dirname, '..') });
   
   console.log('🗄️ Pushing schema to database...');
-  execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
+  execSync(`"${prismaPath}" db push --accept-data-loss`, { stdio: 'inherit', cwd: path.join(__dirname, '..') });
   
   console.log('✅ Database setup complete!');
 } catch (error) {

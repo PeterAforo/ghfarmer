@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -23,8 +24,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate Prisma Client
+      - name: Generate Prisma Client for Linux
         run: npx prisma generate
+        env:
+          PRISMA_CLI_BINARY_TARGETS: debian-openssl-3.0.x
 
       - name: Build Next.js app
         run: npm run build
@@ -34,17 +37,40 @@ jobs:
 
       - name: Prepare deployment files
         run: |
-          mkdir -p deploy
-          cp -r .next deploy/
-          cp -r public deploy/
-          cp -r prisma deploy/
-          cp -r node_modules/.prisma deploy/node_modules/.prisma
-          cp -r node_modules/@prisma deploy/node_modules/@prisma
+          mkdir -p deploy/.next
+          mkdir -p deploy/node_modules
+          mkdir -p deploy/public
+          mkdir -p deploy/prisma
+          mkdir -p deploy/src
+          
+          # Copy built Next.js app
+          cp -r .next/* deploy/.next/
+          
+          # Copy public assets
+          cp -r public/* deploy/public/
+          
+          # Copy Prisma schema
+          cp -r prisma/* deploy/prisma/
+          
+          # Copy Prisma client (Linux binaries from GitHub Actions)
+          cp -r node_modules/.prisma deploy/node_modules/
+          cp -r node_modules/@prisma deploy/node_modules/
+          
+          # Copy source files needed for runtime
+          cp -r src deploy/
+          
+          # Copy config files
           cp package.json deploy/
           cp package-lock.json deploy/
           cp server.js deploy/
           cp next.config.ts deploy/
           cp tsconfig.json deploy/
+          
+          # Create .env file for production
+          echo "NODE_ENV=production" > deploy/.env
+          echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> deploy/.env
+          echo "NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}" >> deploy/.env
+          echo "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}" >> deploy/.env
 
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -53,19 +79,12 @@ jobs:
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./deploy/
-          server-dir: ${{ secrets.FTP_SERVER_DIR }}
-          dangerous-clean-slate: false
-
-      - name: Run post-deployment commands via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.CPANEL_HOST }}
-          username: ${{ secrets.CPANEL_USERNAME }}
-          password: ${{ secrets.CPANEL_PASSWORD }}
-          port: 22
-          script: |
-            cd ${{ secrets.APP_PATH }}
-            npm ci --production --ignore-scripts
-            mkdir -p tmp
-            touch tmp/restart.txt
-            echo "✅ Deployment complete!"
+          server-dir: ./ghfarmer/
+          dangerous-clean-slate: true
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            !**/node_modules/.prisma/**
+            !**/node_modules/@prisma/**
+            **/.next/cache/**

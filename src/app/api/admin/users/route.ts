@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
 
 const updateUserSchema = z.object({
   role: z.enum(["USER", "ADMIN", "SUPER_ADMIN"]).optional(),
-  subscription: z.enum(["FREE", "BASIC", "PROFESSIONAL", "BUSINESS", "ENTERPRISE"]).optional(),
+  subscription: z.enum(["FREE", "PROFESSIONAL", "ENTERPRISE"]).optional(),
   subscriptionEndsAt: z.string().optional().nullable(),
   notes: z.string().optional(),
 });
@@ -175,7 +175,7 @@ export async function PATCH(request: NextRequest) {
     });
 
     // Create audit log
-    await db.auditLog.create({
+    await (db as any).auditLog.create({
       data: {
         userId: auth.userId!,
         action: "user.update",

@@ -150,7 +150,7 @@ export default function EditLivestockPage({
             source: data.source || "",
             costPerAnimal: data.costPerAnimal?.toString() || "",
             status: data.status || "ACTIVE",
-            housingLocation: data.location || "",
+            housingLocation: (data as any).location || "",
             notes: data.notes || "",
             livestockId: data.livestock?.id || "",
             breedId: data.breed?.id || "",

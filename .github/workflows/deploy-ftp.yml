@@ -42,10 +42,10 @@ jobs:
       - name: Prepare deployment files
         run: |
           mkdir -p deploy/.next
-          mkdir -p deploy/node_modules
           mkdir -p deploy/public
           mkdir -p deploy/prisma
           mkdir -p deploy/src
+          mkdir -p deploy/.prisma-client
           
           # Copy built Next.js app
           cp -r .next/* deploy/.next/
@@ -56,9 +56,9 @@ jobs:
           # Copy Prisma schema
           cp -r prisma/* deploy/prisma/
           
-          # Copy Prisma client (Linux binaries from GitHub Actions)
-          cp -r node_modules/.prisma deploy/node_modules/
-          cp -r node_modules/@prisma deploy/node_modules/
+          # Copy Prisma client to separate folder (CloudLinux manages node_modules)
+          cp -r node_modules/.prisma/* deploy/.prisma-client/
+          cp -r node_modules/@prisma deploy/.prisma-client/
           
           # Copy source files needed for runtime
           cp -r src deploy/
@@ -87,11 +87,9 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./deploy/
           server-dir: ./ghfarmer/
-          dangerous-clean-slate: true
+          dangerous-clean-slate: false
           exclude: |
             **/.git*
             **/.git*/**
             **/node_modules/**
-            !**/node_modules/.prisma/**
-            !**/node_modules/@prisma/**
             **/.next/cache/**

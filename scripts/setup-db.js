@@ -3,14 +3,16 @@ const path = require('path');
 
 console.log('🔧 Setting up database...');
 
-const prismaPath = path.join(__dirname, '..', 'node_modules', '.bin', 'prisma');
+const rootDir = path.join(__dirname, '..');
+const prismaPath = path.join(rootDir, 'node_modules', '.bin', 'prisma');
 
 try {
   console.log('📦 Generating Prisma Client...');
-  execSync(`"${prismaPath}" generate`, { stdio: 'inherit', cwd: path.join(__dirname, '..') });
+  console.log('Using prisma at:', prismaPath);
+  execSync(prismaPath + ' generate', { stdio: 'inherit', cwd: rootDir, shell: true });
   
   console.log('🗄️ Pushing schema to database...');
-  execSync(`"${prismaPath}" db push --accept-data-loss`, { stdio: 'inherit', cwd: path.join(__dirname, '..') });
+  execSync(prismaPath + ' db push --accept-data-loss', { stdio: 'inherit', cwd: rootDir, shell: true });
   
   console.log('✅ Database setup complete!');
 } catch (error) {

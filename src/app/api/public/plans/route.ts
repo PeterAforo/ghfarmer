@@ -6,30 +6,27 @@ export async function GET() {
   try {
     const plans = await db.subscriptionPlan.findMany({
       where: { isActive: true },
-      orderBy: { price: "asc" },
+      orderBy: { displayOrder: "asc" },
       select: {
         id: true,
         name: true,
-        tier: true,
+        slug: true,
         description: true,
-        price: true,
+        priceMonthly: true,
+        priceYearly: true,
         currency: true,
-        billingCycle: true,
+        targetAudience: true,
         features: true,
-        limits: true,
+        maxFarms: true,
+        maxPlots: true,
+        maxUsers: true,
         isPopular: true,
-        trialDays: true,
       },
     });
 
-    // Group by tier for display
-    const farmerPlans = plans.filter(p => 
-      ["FREE", "PRO", "BUSINESS", "ENTERPRISE"].includes(p.tier)
-    );
-
-    const providerPlans = plans.filter(p => 
-      ["BASIC", "VERIFIED", "PREMIUM"].includes(p.tier)
-    );
+    // Group by target audience for display
+    const farmerPlans = plans.filter(p => p.targetAudience === "FARMER");
+    const providerPlans = plans.filter(p => p.targetAudience === "SERVICE_PROVIDER");
 
     return NextResponse.json({
       farmerPlans,

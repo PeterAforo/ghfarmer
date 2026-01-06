@@ -856,7 +856,7 @@ async function main() {
       description: "Custom solutions for large organizations",
       priceMonthly: 0,
       priceYearly: 0,
-      targetAudience: "BOTH",
+      targetAudience: "FARMER",
       maxFarms: -1,
       maxPlots: -1,
       maxRecordsPerMonth: -1,

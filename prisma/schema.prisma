@@ -99,6 +99,22 @@ model User {
   supportMessages   SupportMessage[]
   auditLogs         AuditLog[]
   announcements     Announcement[]
+  
+  // Sales & Purchases
+  sales             Sale[]
+  purchases         Purchase[]
+  
+  // Feed Management
+  feedSchedules     FeedSchedule[]
+  dailyFeedLogs     DailyFeedLog[]
+  
+  // Daily Production Logs
+  dailyEggLogs      DailyEggLog[]
+  dailyMilkLogs     DailyMilkLog[]
+  
+  // Birth & Mortality
+  birthRecords      BirthRecord[]
+  mortalityRecords  MortalityRecord[]
 
   @@map("users")
 }
@@ -488,6 +504,7 @@ model CropEntry {
   expenses        Expense[]
   incomes         Income[]
   plotAllocations CropPlotAllocation[]
+  saleItems       SaleItem[]
 
   @@map("crop_entries")
 }
@@ -549,6 +566,7 @@ model Livestock {
   vaccinations        VaccinationSchedule[]
   entries             LivestockEntry[]
   healthSchedules     LivestockHealthSchedule[]
+  feedSchedules       FeedSchedule[] @relation("FeedScheduleLivestock")
 
   @@map("livestock")
 }
@@ -648,6 +666,17 @@ model LivestockEntry {
   feedingRecords  FeedingRecord[]
   expenses        Expense[]
   incomes         Income[]
+  
+  // Sales & Production Logs
+  saleItems       SaleItem[]
+  dailyFeedLogs   DailyFeedLog[] @relation("DailyFeedLogs")
+  dailyEggLogs    DailyEggLog[] @relation("DailyEggLogs")
+  dailyMilkLogs   DailyMilkLog[] @relation("DailyMilkLogs")
+  
+  // Birth & Mortality
+  damBirths       BirthRecord[] @relation("DamBirths")
+  sireBirths      BirthRecord[] @relation("SireBirths")
+  mortalityRecords MortalityRecord[] @relation("MortalityRecords")
 
   @@map("livestock_entries")
 }
@@ -1318,6 +1347,7 @@ model InputSupplier {
   updatedAt       DateTime    @updatedAt
 
   reviews         SupplierReview[]
+  purchases       Purchase[]
 
   @@map("input_suppliers")
 }
@@ -2662,6 +2692,11 @@ model InventoryItem {
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   movements       InventoryMovement[]
   
+  // Sales & Purchases
+  saleItems       SaleItem[]
+  purchaseItems   PurchaseItem[]
+  dailyFeedLogs   DailyFeedLog[]
+  
   @@index([userId])
   @@index([category])
   @@map("inventory_items")
@@ -3126,4 +3161,440 @@ enum AnnouncementType {
   WARNING
   SUCCESS
   MAINTENANCE
+}
+
+// ============================================
+// SALES & PURCHASES MODULE
+// ============================================
+
+model Sale {
+  id              String      @id @default(cuid())
+  userId          String
+  
+  // Transaction details
+  saleNumber      String      @unique
+  saleDate        DateTime    @default(now())
+  
+  // Customer info
+  customerName    String?
+  customerPhone   String?
+  customerEmail   String?
+  customerAddress String?
+  
+  // Totals
+  subtotal        Float
+  discount        Float       @default(0)
+  tax             Float       @default(0)
+  totalAmount     Float
+  currency        String      @default("GHS")
+  
+  // Payment
+  paymentStatus   SalePaymentStatus @default(PENDING)
+  paymentMethod   PaymentMethod?
+  paidAmount      Float       @default(0)
+  paidAt          DateTime?
+  
+  // Notes
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items           SaleItem[]
+  
+  @@index([userId])
+  @@index([saleDate])
+  @@index([paymentStatus])
+  @@map("sales")
+}
+
+model SaleItem {
+  id              String      @id @default(cuid())
+  saleId          String
+  
+  // Product info
+  productType     SaleProductType
+  productName     String
+  
+  // Linked entities (optional)
+  cropEntryId     String?
+  livestockEntryId String?
+  inventoryItemId String?
+  productionRecordId String?
+  
+  // Quantities
+  quantity        Float
+  unit            String
+  unitPrice       Float
+  totalPrice      Float
+  
+  createdAt       DateTime    @default(now())
+  
+  sale            Sale        @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  cropEntry       CropEntry?  @relation(fields: [cropEntryId], references: [id])
+  livestockEntry  LivestockEntry? @relation(fields: [livestockEntryId], references: [id])
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  
+  @@index([saleId])
+  @@map("sale_items")
+}
+
+model Purchase {
+  id              String      @id @default(cuid())
+  userId          String
+  
+  // Transaction details
+  purchaseNumber  String      @unique
+  purchaseDate    DateTime    @default(now())
+  
+  // Supplier info
+  supplierId      String?
+  supplierName    String?
+  supplierPhone   String?
+  
+  // Totals
+  subtotal        Float
+  tax             Float       @default(0)
+  shippingCost    Float       @default(0)
+  totalAmount     Float
+  currency        String      @default("GHS")
+  
+  // Payment
+  paymentStatus   SalePaymentStatus @default(PENDING)
+  paymentMethod   PaymentMethod?
+  paidAmount      Float       @default(0)
+  paidAt          DateTime?
+  
+  // Status
+  status          PurchaseStatus @default(ORDERED)
+  expectedDelivery DateTime?
+  receivedAt      DateTime?
+  
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  supplier        InputSupplier? @relation(fields: [supplierId], references: [id])
+  items           PurchaseItem[]
+  
+  @@index([userId])
+  @@index([purchaseDate])
+  @@index([status])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id              String      @id @default(cuid())
+  purchaseId      String
+  
+  // Product info
+  productType     String
+  productName     String
+  
+  // Link to inventory
+  inventoryItemId String?
+  
+  // Quantities
+  quantity        Float
+  unit            String
+  unitPrice       Float
+  totalPrice      Float
+  
+  // Received tracking
+  receivedQuantity Float      @default(0)
+  
+  createdAt       DateTime    @default(now())
+  
+  purchase        Purchase    @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  
+  @@index([purchaseId])
+  @@map("purchase_items")
+}
+
+// ============================================
+// FEED MANAGEMENT MODULE
+// ============================================
+
+model FeedSchedule {
+  id              String      @id @default(cuid())
+  userId          String
+  
+  // Animal type
+  livestockId     String
+  breedId         String?
+  
+  // Growth stage
+  growthStage     String      // STARTER, GROWER, FINISHER, LAYER, BREEDER
+  ageFromWeeks    Int
+  ageToWeeks      Int?
+  
+  // Feed requirements
+  feedId          String?
+  feedType        String
+  dailyAmountPerAnimal Float  // Amount per animal per day
+  amountUnit      String      @default("kg")
+  
+  // Feeding frequency
+  feedingsPerDay  Int         @default(2)
+  
+  // Cost estimation
+  estimatedCostPerDay Float?
+  
+  notes           String?
+  isActive        Boolean     @default(true)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  livestock       Livestock   @relation("FeedScheduleLivestock", fields: [livestockId], references: [id])
+  
+  @@index([userId])
+  @@index([livestockId])
+  @@map("feed_schedules")
+}
+
+model DailyFeedLog {
+  id              String      @id @default(cuid())
+  userId          String
+  livestockEntryId String
+  farmId          String?
+  
+  date            DateTime
+  
+  // Feed details
+  feedType        String
+  feedId          String?
+  inventoryItemId String?
+  
+  // Quantities
+  quantity        Float
+  unit            String      @default("kg")
+  
+  // Cost
+  unitCost        Float?
+  totalCost       Float?
+  
+  // Auto-deducted from inventory
+  inventoryDeducted Boolean   @default(false)
+  
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+  
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  livestockEntry  LivestockEntry @relation("DailyFeedLogs", fields: [livestockEntryId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  
+  @@index([userId])
+  @@index([livestockEntryId])
+  @@index([date])
+  @@map("daily_feed_logs")
+}
+
+// ============================================
+// DAILY PRODUCTION LOGS
+// ============================================
+
+model DailyEggLog {
+  id              String      @id @default(cuid())
+  userId          String
+  livestockEntryId String
+  farmId          String?
+  
+  date            DateTime
+  
+  // Production
+  totalEggs       Int
+  brokenEggs      Int         @default(0)
+  goodEggs        Int         // Calculated: totalEggs - brokenEggs
+  
+  // Grading (optional)
+  gradeA          Int?
+  gradeB          Int?
+  gradeC          Int?
+  
+  // Revenue
+  unitPrice       Float?
+  totalValue      Float?
+  
+  // Comparison to expected
+  expectedEggs    Int?
+  variance        Float?      // Percentage
+  varianceReason  String?
+  
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+  
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  livestockEntry  LivestockEntry @relation("DailyEggLogs", fields: [livestockEntryId], references: [id], onDelete: Cascade)
+  
+  @@unique([livestockEntryId, date])
+  @@index([userId])
+  @@index([date])
+  @@map("daily_egg_logs")
+}
+
+model DailyMilkLog {
+  id              String      @id @default(cuid())
+  userId          String
+  livestockEntryId String
+  farmId          String?
+  
+  date            DateTime
+  
+  // Production
+  morningVolume   Float?
+  eveningVolume   Float?
+  totalVolume     Float
+  unit            String      @default("liters")
+  
+  // Quality
+  fatContent      Float?
+  temperature     Float?
+  quality         String?     // GOOD, FAIR, POOR
+  
+  // Revenue
+  unitPrice       Float?
+  totalValue      Float?
+  
+  // Comparison
+  expectedVolume  Float?
+  variance        Float?
+  varianceReason  String?
+  
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+  
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  livestockEntry  LivestockEntry @relation("DailyMilkLogs", fields: [livestockEntryId], references: [id], onDelete: Cascade)
+  
+  @@unique([livestockEntryId, date])
+  @@index([userId])
+  @@index([date])
+  @@map("daily_milk_logs")
+}
+
+// ============================================
+// BIRTH & MORTALITY TRACKING
+// ============================================
+
+model BirthRecord {
+  id              String      @id @default(cuid())
+  userId          String
+  farmId          String
+  
+  // Parents
+  damId           String      // Mother
+  sireId          String?     // Father (if known)
+  
+  // Birth details
+  birthDate       DateTime
+  offspringCount  Int         @default(1)
+  maleCount       Int         @default(0)
+  femaleCount     Int         @default(0)
+  
+  // Health
+  birthWeight     Float?
+  healthStatus    String?     // HEALTHY, WEAK, STILLBORN
+  complications   String?
+  
+  // Offspring tracking
+  offspringCreated Boolean    @default(false)
+  
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dam             LivestockEntry @relation("DamBirths", fields: [damId], references: [id])
+  sire            LivestockEntry? @relation("SireBirths", fields: [sireId], references: [id])
+  
+  @@index([userId])
+  @@index([farmId])
+  @@index([birthDate])
+  @@map("birth_records")
+}
+
+model MortalityRecord {
+  id              String      @id @default(cuid())
+  userId          String
+  livestockEntryId String
+  farmId          String?
+  
+  // Death details
+  deathDate       DateTime
+  quantity        Int         @default(1)
+  
+  // Cause
+  cause           MortalityCause
+  causeDetails    String?
+  symptoms        String?
+  
+  // Financial impact
+  estimatedLoss   Float?
+  
+  // Disposal
+  disposalMethod  String?
+  
+  // Veterinary
+  veterinarianConsulted Boolean @default(false)
+  veterinarianNotes String?
+  
+  notes           String?
+  
+  createdAt       DateTime    @default(now())
+  
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  livestockEntry  LivestockEntry @relation("MortalityRecords", fields: [livestockEntryId], references: [id])
+  
+  @@index([userId])
+  @@index([deathDate])
+  @@map("mortality_records")
+}
+
+// New enums for Sales & Purchases
+enum SalePaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+}
+
+enum SaleProductType {
+  CROP
+  LIVESTOCK
+  EGGS
+  MILK
+  FISH
+  PRODUCE
+  OTHER
+}
+
+enum PurchaseStatus {
+  ORDERED
+  SHIPPED
+  PARTIAL_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum MortalityCause {
+  DISEASE
+  PREDATOR
+  ACCIDENT
+  OLD_AGE
+  WEATHER
+  POISONING
+  UNKNOWN
+  OTHER
 }

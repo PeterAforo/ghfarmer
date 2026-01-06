@@ -1,7 +1,40 @@
 import Link from "next/link";
 import { Leaf, TrendingUp, Cloud, Users, Check } from "lucide-react";
+import { db } from "@/lib/db";
 
-export default function HomePage() {
+interface SubscriptionPlanData {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  priceMonthly: number;
+  priceYearly: number;
+  currency: string;
+  features: Record<string, boolean>;
+  maxFarms: number;
+  maxPlots: number;
+  maxUsers: number;
+  isPopular: boolean;
+  targetAudience: string;
+}
+
+async function getPlans(): Promise<SubscriptionPlanData[]> {
+  try {
+    const plans = await db.subscriptionPlan.findMany({
+      where: { 
+        isActive: true,
+        targetAudience: "FARMER",
+      },
+      orderBy: { displayOrder: "asc" },
+    });
+    return plans as unknown as SubscriptionPlanData[];
+  } catch {
+    return [];
+  }
+}
+
+export default async function HomePage() {
+  const plans = await getPlans();
   return (
     <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
       {/* Header */}
@@ -107,84 +140,100 @@ export default function HomePage() {
         <p className="text-center text-gray-600 mb-12 max-w-2xl mx-auto">
           Choose the plan that fits your farm. Start free and upgrade as you grow.
         </p>
-        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          {/* Free Plan */}
-          <div className="bg-white p-8 rounded-xl shadow-sm border hover:shadow-md transition-shadow">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Starter</h3>
-            <p className="text-gray-600 mb-4">Perfect for smallholder farmers</p>
-            <div className="mb-6">
-              <span className="text-4xl font-bold text-gray-900">Free</span>
-            </div>
-            <ul className="space-y-3 mb-8">
-              <PricingFeature>1 Farm</PricingFeature>
-              <PricingFeature>Up to 5 crop entries</PricingFeature>
-              <PricingFeature>Up to 10 livestock</PricingFeature>
-              <PricingFeature>Basic market prices</PricingFeature>
-              <PricingFeature>Task management</PricingFeature>
-              <PricingFeature>Mobile access</PricingFeature>
-            </ul>
-            <Link
-              href="/auth/register"
-              className="block w-full text-center border border-primary text-primary px-6 py-3 rounded-lg hover:bg-primary/5 font-medium"
-            >
-              Get Started Free
-            </Link>
-          </div>
-
-          {/* Pro Plan */}
-          <div className="bg-primary p-8 rounded-xl shadow-lg border-2 border-primary relative">
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-400 text-yellow-900 text-xs font-bold px-3 py-1 rounded-full">
-              MOST POPULAR
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2">Professional</h3>
-            <p className="text-green-100 mb-4">For growing farm businesses</p>
-            <div className="mb-6">
-              <span className="text-4xl font-bold text-white">GH₵ 49</span>
-              <span className="text-green-100">/month</span>
-            </div>
-            <ul className="space-y-3 mb-8">
-              <PricingFeature light>Up to 5 Farms</PricingFeature>
-              <PricingFeature light>Unlimited crop entries</PricingFeature>
-              <PricingFeature light>Unlimited livestock</PricingFeature>
-              <PricingFeature light>Real-time market prices</PricingFeature>
-              <PricingFeature light>Financial reports</PricingFeature>
-              <PricingFeature light>Weather alerts</PricingFeature>
-              <PricingFeature light>Price alerts</PricingFeature>
-              <PricingFeature light>Priority support</PricingFeature>
-            </ul>
-            <Link
-              href="/auth/register?plan=pro"
-              className="block w-full text-center bg-white text-primary px-6 py-3 rounded-lg hover:bg-gray-100 font-medium"
-            >
-              Start 14-Day Free Trial
-            </Link>
-          </div>
-
-          {/* Enterprise Plan */}
-          <div className="bg-white p-8 rounded-xl shadow-sm border hover:shadow-md transition-shadow">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Enterprise</h3>
-            <p className="text-gray-600 mb-4">For cooperatives & large farms</p>
-            <div className="mb-6">
-              <span className="text-4xl font-bold text-gray-900">GH₵ 199</span>
-              <span className="text-gray-600">/month</span>
-            </div>
-            <ul className="space-y-3 mb-8">
-              <PricingFeature>Unlimited Farms</PricingFeature>
-              <PricingFeature>Everything in Professional</PricingFeature>
-              <PricingFeature>Multi-user access</PricingFeature>
-              <PricingFeature>Team management</PricingFeature>
-              <PricingFeature>Advanced analytics</PricingFeature>
-              <PricingFeature>API access</PricingFeature>
-              <PricingFeature>Custom integrations</PricingFeature>
-              <PricingFeature>Dedicated support</PricingFeature>
-            </ul>
-            <Link
-              href="/auth/register?plan=enterprise"
-              className="block w-full text-center border border-primary text-primary px-6 py-3 rounded-lg hover:bg-primary/5 font-medium"
-            >
-              Contact Sales
-            </Link>
-          </div>
+        <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+          {plans.length > 0 ? (
+            plans.map((plan) => (
+              <PricingCard key={plan.id} plan={plan} />
+            ))
+          ) : (
+            <>
+              {/* Fallback static plans if DB fetch fails */}
+              <div className="bg-white p-8 rounded-xl shadow-sm border hover:shadow-md transition-shadow">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Starter</h3>
+                <p className="text-gray-600 mb-4">Perfect for smallholder farmers</p>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold text-gray-900">Free</span>
+                </div>
+                <ul className="space-y-3 mb-8">
+                  <PricingFeature>1 Farm</PricingFeature>
+                  <PricingFeature>Up to 5 plots</PricingFeature>
+                  <PricingFeature>Basic market prices</PricingFeature>
+                  <PricingFeature>Task management</PricingFeature>
+                </ul>
+                <Link
+                  href="/auth/register"
+                  className="block w-full text-center border border-primary text-primary px-6 py-3 rounded-lg hover:bg-primary/5 font-medium"
+                >
+                  Get Started Free
+                </Link>
+              </div>
+              <div className="bg-primary p-8 rounded-xl shadow-lg border-2 border-primary relative">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-400 text-yellow-900 text-xs font-bold px-3 py-1 rounded-full">
+                  MOST POPULAR
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Professional</h3>
+                <p className="text-green-100 mb-4">For growing farm businesses</p>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold text-white">GH₵ 65</span>
+                  <span className="text-green-100">/month</span>
+                </div>
+                <ul className="space-y-3 mb-8">
+                  <PricingFeature light>Unlimited Farms</PricingFeature>
+                  <PricingFeature light>Advanced Analytics</PricingFeature>
+                  <PricingFeature light>Weather Forecasts</PricingFeature>
+                  <PricingFeature light>Export Reports</PricingFeature>
+                  <PricingFeature light>Priority Support</PricingFeature>
+                </ul>
+                <Link
+                  href="/auth/register?plan=pro"
+                  className="block w-full text-center bg-white text-primary px-6 py-3 rounded-lg hover:bg-gray-100 font-medium"
+                >
+                  Start 14-Day Free Trial
+                </Link>
+              </div>
+              <div className="bg-white p-8 rounded-xl shadow-sm border hover:shadow-md transition-shadow">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Business</h3>
+                <p className="text-gray-600 mb-4">For commercial farms</p>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold text-gray-900">GH₵ 200</span>
+                  <span className="text-gray-600">/month</span>
+                </div>
+                <ul className="space-y-3 mb-8">
+                  <PricingFeature>Everything in Pro</PricingFeature>
+                  <PricingFeature>Multi-user Access</PricingFeature>
+                  <PricingFeature>Inventory Management</PricingFeature>
+                  <PricingFeature>API Access</PricingFeature>
+                  <PricingFeature>Loan Reports</PricingFeature>
+                </ul>
+                <Link
+                  href="/auth/register?plan=business"
+                  className="block w-full text-center border border-primary text-primary px-6 py-3 rounded-lg hover:bg-primary/5 font-medium"
+                >
+                  Start Free Trial
+                </Link>
+              </div>
+              <div className="bg-white p-8 rounded-xl shadow-sm border hover:shadow-md transition-shadow">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Enterprise</h3>
+                <p className="text-gray-600 mb-4">For cooperatives & large farms</p>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold text-gray-900">Custom</span>
+                </div>
+                <ul className="space-y-3 mb-8">
+                  <PricingFeature>Everything in Business</PricingFeature>
+                  <PricingFeature>Unlimited Users</PricingFeature>
+                  <PricingFeature>White-label Option</PricingFeature>
+                  <PricingFeature>Dedicated Support</PricingFeature>
+                  <PricingFeature>Custom Integrations</PricingFeature>
+                </ul>
+                <Link
+                  href="/auth/register?plan=enterprise"
+                  className="block w-full text-center border border-primary text-primary px-6 py-3 rounded-lg hover:bg-primary/5 font-medium"
+                >
+                  Contact Sales
+                </Link>
+              </div>
+            </>
+          )}
         </div>
       </section>
 
@@ -256,4 +305,105 @@ function PricingFeature({
       {children}
     </li>
   );
+}
+
+function PricingCard({ plan }: { plan: SubscriptionPlanData }) {
+  const features = plan.features as Record<string, boolean>;
+  const featureList = Object.entries(features)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => formatFeatureName(key));
+  
+  const isPopular = plan.isPopular;
+  const isFree = plan.priceMonthly === 0;
+  const isEnterprise = plan.slug === "enterprise";
+  
+  return (
+    <div className={`p-8 rounded-xl transition-shadow ${
+      isPopular 
+        ? "bg-primary shadow-lg border-2 border-primary relative" 
+        : "bg-white shadow-sm border hover:shadow-md"
+    }`}>
+      {isPopular && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-400 text-yellow-900 text-xs font-bold px-3 py-1 rounded-full">
+          MOST POPULAR
+        </div>
+      )}
+      <h3 className={`text-xl font-bold mb-2 ${isPopular ? "text-white" : "text-gray-900"}`}>
+        {plan.name}
+      </h3>
+      <p className={`mb-4 ${isPopular ? "text-green-100" : "text-gray-600"}`}>
+        {plan.description || "Perfect for your farm"}
+      </p>
+      <div className="mb-6">
+        {isEnterprise ? (
+          <span className={`text-4xl font-bold ${isPopular ? "text-white" : "text-gray-900"}`}>
+            Custom
+          </span>
+        ) : isFree ? (
+          <span className={`text-4xl font-bold ${isPopular ? "text-white" : "text-gray-900"}`}>
+            Free
+          </span>
+        ) : (
+          <>
+            <span className={`text-4xl font-bold ${isPopular ? "text-white" : "text-gray-900"}`}>
+              {plan.currency === "GHS" ? "GH₵" : plan.currency} {plan.priceMonthly}
+            </span>
+            <span className={isPopular ? "text-green-100" : "text-gray-600"}>/month</span>
+          </>
+        )}
+      </div>
+      <ul className="space-y-3 mb-8">
+        {plan.maxFarms === -1 ? (
+          <PricingFeature light={isPopular}>Unlimited Farms</PricingFeature>
+        ) : (
+          <PricingFeature light={isPopular}>{plan.maxFarms} Farm{plan.maxFarms > 1 ? "s" : ""}</PricingFeature>
+        )}
+        {plan.maxPlots === -1 ? (
+          <PricingFeature light={isPopular}>Unlimited Plots</PricingFeature>
+        ) : (
+          <PricingFeature light={isPopular}>Up to {plan.maxPlots} plots</PricingFeature>
+        )}
+        {plan.maxUsers > 1 && (
+          <PricingFeature light={isPopular}>{plan.maxUsers === -1 ? "Unlimited" : plan.maxUsers} Team Members</PricingFeature>
+        )}
+        {featureList.slice(0, 5).map((feature) => (
+          <PricingFeature key={feature} light={isPopular}>{feature}</PricingFeature>
+        ))}
+      </ul>
+      <Link
+        href={`/auth/register?plan=${plan.slug}`}
+        className={`block w-full text-center px-6 py-3 rounded-lg font-medium ${
+          isPopular
+            ? "bg-white text-primary hover:bg-gray-100"
+            : "border border-primary text-primary hover:bg-primary/5"
+        }`}
+      >
+        {isFree ? "Get Started Free" : isEnterprise ? "Contact Sales" : "Start Free Trial"}
+      </Link>
+    </div>
+  );
+}
+
+function formatFeatureName(key: string): string {
+  const names: Record<string, string> = {
+    advancedAnalytics: "Advanced Analytics",
+    realTimePrices: "Real-time Prices",
+    weatherForecasts: "Weather Forecasts",
+    exportReports: "Export Reports",
+    offlineMode: "Offline Mode",
+    prioritySupport: "Priority Support",
+    inventoryManagement: "Inventory Management",
+    multiUserAccess: "Multi-user Access",
+    apiAccess: "API Access",
+    bulkOperations: "Bulk Operations",
+    financialIntegration: "Financial Integration",
+    loanEligibilityReports: "Loan Reports",
+    unlimitedDse: "Unlimited AI Tips",
+    supplierIntegration: "Supplier Integration",
+    whiteLabel: "White-label Option",
+    dedicatedSupport: "Dedicated Support",
+    customReporting: "Custom Reports",
+    slaGuarantee: "99.9% SLA",
+  };
+  return names[key] || key.replace(/([A-Z])/g, " $1").trim();
 }

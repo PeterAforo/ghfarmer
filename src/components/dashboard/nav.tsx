@@ -32,6 +32,10 @@ import {
   DollarSign,
   Globe,
   Cog,
+  Receipt,
+  ShoppingCart,
+  Egg,
+  Package,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -68,8 +72,19 @@ const navCategories: NavCategory[] = [
       { title: "Plots", href: "/dashboard/plots", icon: LayoutGrid },
       { title: "Crops", href: "/dashboard/crops", icon: Leaf },
       { title: "Livestock", href: "/dashboard/livestock", icon: PawPrint },
+      { title: "Production", href: "/dashboard/livestock/production", icon: Egg },
       { title: "Aquaculture", href: "/dashboard/aquaculture", icon: Fish },
+      { title: "Inventory", href: "/dashboard/inventory", icon: Package },
       { title: "Tasks", href: "/dashboard/tasks", icon: Calendar },
+    ],
+  },
+  {
+    title: "Sales & Purchases",
+    icon: Receipt,
+    defaultOpen: false,
+    items: [
+      { title: "Sales", href: "/dashboard/sales", icon: Receipt },
+      { title: "Purchases", href: "/dashboard/purchases", icon: ShoppingCart },
     ],
   },
   {

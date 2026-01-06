@@ -36,6 +36,7 @@ import {
   ShoppingCart,
   Egg,
   Package,
+  Utensils,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -73,6 +74,7 @@ const navCategories: NavCategory[] = [
       { title: "Crops", href: "/dashboard/crops", icon: Leaf },
       { title: "Livestock", href: "/dashboard/livestock", icon: PawPrint },
       { title: "Production", href: "/dashboard/livestock/production", icon: Egg },
+      { title: "Feed", href: "/dashboard/livestock/feed", icon: Utensils },
       { title: "Aquaculture", href: "/dashboard/aquaculture", icon: Fish },
       { title: "Inventory", href: "/dashboard/inventory", icon: Package },
       { title: "Tasks", href: "/dashboard/tasks", icon: Calendar },

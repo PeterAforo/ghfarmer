@@ -39,8 +39,8 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("");
-  const [subscriptionFilter, setSubscriptionFilter] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [subscriptionFilter, setSubscriptionFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -56,8 +56,8 @@ export default function AdminUsersPage() {
         page: page.toString(),
         limit: "20",
         ...(search && { search }),
-        ...(roleFilter && { role: roleFilter }),
-        ...(subscriptionFilter && { subscription: subscriptionFilter }),
+        ...(roleFilter && roleFilter !== "all" && { role: roleFilter }),
+        ...(subscriptionFilter && subscriptionFilter !== "all" && { subscription: subscriptionFilter }),
       });
 
       const res = await fetch(`/api/admin/users?${params}`);
@@ -107,7 +107,7 @@ export default function AdminUsersPage() {
                 <SelectValue placeholder="All Roles" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Roles</SelectItem>
+                <SelectItem value="all">All Roles</SelectItem>
                 <SelectItem value="USER">User</SelectItem>
                 <SelectItem value="ADMIN">Admin</SelectItem>
                 <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
@@ -118,7 +118,7 @@ export default function AdminUsersPage() {
                 <SelectValue placeholder="All Plans" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Plans</SelectItem>
+                <SelectItem value="all">All Plans</SelectItem>
                 <SelectItem value="FREE">Free</SelectItem>
                 <SelectItem value="BASIC">Basic</SelectItem>
                 <SelectItem value="PROFESSIONAL">Professional</SelectItem>

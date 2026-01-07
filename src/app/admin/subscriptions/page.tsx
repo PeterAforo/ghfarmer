@@ -69,8 +69,8 @@ export default function AdminSubscriptionsPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [planFilter, setPlanFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [planFilter, setPlanFilter] = useState("all");
 
   useEffect(() => {
     // Check if user is admin
@@ -85,8 +85,8 @@ export default function AdminSubscriptionsPage() {
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
-      if (statusFilter) params.append("status", statusFilter);
-      if (planFilter) params.append("plan", planFilter);
+      if (statusFilter && statusFilter !== "all") params.append("status", statusFilter);
+      if (planFilter && planFilter !== "all") params.append("plan", planFilter);
 
       const response = await fetch(`/api/admin/subscriptions?${params}`);
       if (response.ok) {
@@ -253,7 +253,7 @@ export default function AdminSubscriptionsPage() {
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Statuses</SelectItem>
+            <SelectItem value="all">All Statuses</SelectItem>
             <SelectItem value="ACTIVE">Active</SelectItem>
             <SelectItem value="TRIALING">Trialing</SelectItem>
             <SelectItem value="CANCELLED">Cancelled</SelectItem>
@@ -266,7 +266,7 @@ export default function AdminSubscriptionsPage() {
             <SelectValue placeholder="All Plans" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Plans</SelectItem>
+            <SelectItem value="all">All Plans</SelectItem>
             <SelectItem value="free">Free</SelectItem>
             <SelectItem value="pro">Pro</SelectItem>
             <SelectItem value="business">Business</SelectItem>

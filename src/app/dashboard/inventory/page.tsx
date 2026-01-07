@@ -83,7 +83,7 @@ export default function InventoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [showLowStock, setShowLowStock] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
@@ -96,7 +96,7 @@ export default function InventoryPage() {
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
-      if (categoryFilter) params.append("category", categoryFilter);
+      if (categoryFilter && categoryFilter !== "all") params.append("category", categoryFilter);
       if (showLowStock) params.append("lowStock", "true");
 
       const response = await fetch(`/api/inventory?${params}`);
@@ -223,7 +223,7 @@ export default function InventoryPage() {
             <SelectValue placeholder="All Categories" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Categories</SelectItem>
+            <SelectItem value="all">All Categories</SelectItem>
             {CATEGORIES.map(cat => (
               <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
             ))}

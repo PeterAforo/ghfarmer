@@ -380,7 +380,7 @@ export default function FarmDetailPage({
               <>
                 {/* Status breakdown */}
                 <div className="flex gap-2 mb-4 flex-wrap">
-                  {Object.entries(crops.byStatus).map(([status, count]) => (
+                  {Object.entries(crops.byStatus || {}).map(([status, count]) => (
                     <span
                       key={status}
                       className={`text-xs px-2 py-1 rounded-full ${
@@ -438,7 +438,7 @@ export default function FarmDetailPage({
               <>
                 {/* Category breakdown */}
                 <div className="flex gap-2 mb-4 flex-wrap">
-                  {Object.entries(livestock.byCategory).map(([category, count]) => (
+                  {Object.entries(livestock.byCategory || {}).map(([category, count]) => (
                     <span
                       key={category}
                       className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700"

@@ -192,7 +192,7 @@ export default function AdminSubscriptionsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {Object.entries(stats.byPlan).map(([plan, count]) => (
+                {Object.entries(stats.byPlan || {}).map(([plan, count]) => (
                   <div key={plan} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className={`w-3 h-3 rounded-full ${
@@ -216,7 +216,7 @@ export default function AdminSubscriptionsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {Object.entries(stats.byStatus).map(([status, count]) => (
+                {Object.entries(stats.byStatus || {}).map(([status, count]) => (
                   <div key={status} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className={`w-3 h-3 rounded-full ${

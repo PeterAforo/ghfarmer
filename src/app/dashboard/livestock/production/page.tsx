@@ -87,7 +87,9 @@ export default function ProductionLogsPage() {
       const res = await fetch("/api/livestock?status=ACTIVE");
       const data = await res.json();
       // Filter for poultry (eggs) or cattle/goats (milk)
-      const filtered = (data.entries || []).filter((e: any) => {
+      // API returns array directly, not { entries: [] }
+      const entries = Array.isArray(data) ? data : (data.entries || []);
+      const filtered = entries.filter((e: any) => {
         if (activeTab === "eggs") {
           return e.livestock?.category === "POULTRY";
         } else {

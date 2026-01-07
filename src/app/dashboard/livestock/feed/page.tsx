@@ -83,7 +83,9 @@ export default function FeedManagementPage() {
     try {
       const res = await fetch("/api/livestock?status=ACTIVE");
       const data = await res.json();
-      setLivestockEntries(data.entries || []);
+      // API returns array directly, not { entries: [] }
+      const entries = Array.isArray(data) ? data : (data.entries || []);
+      setLivestockEntries(entries);
     } catch (error) {
       console.error("Error fetching livestock:", error);
     }

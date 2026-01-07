@@ -308,7 +308,7 @@ function PricingFeature({
 }
 
 function PricingCard({ plan }: { plan: SubscriptionPlanData }) {
-  const features = plan.features as Record<string, boolean>;
+  const features = (plan.features || {}) as Record<string, boolean>;
   const featureList = Object.entries(features)
     .filter(([, enabled]) => enabled)
     .map(([key]) => formatFeatureName(key));

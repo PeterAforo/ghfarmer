@@ -1,3 +1,4 @@
+// Feed Management Page - Track daily feed consumption
 "use client";
 
 import { useState, useEffect } from "react";

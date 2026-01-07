@@ -104,7 +104,7 @@ export default function PricingPage() {
 
   async function fetchPlans() {
     try {
-      const response = await fetch("/api/subscriptions");
+      const response = await fetch("/api/subscriptions?audience=FARMER");
       if (response.ok) {
         const data = await response.json();
         setPlans(data);
